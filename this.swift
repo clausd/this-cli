@@ -257,14 +257,17 @@ For detailed documentation: man this
     private func searchWithMdfind(filter: String) -> [String] {
         var results: [String] = []
         
-        // Build mdfind query
+        // Build mdfind query - use LastUsedDate for recently accessed files
         let daysAgo = config.maxRecentDays
         let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        
+        // Use the format that mdfind expects for date queries
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         let dateString = formatter.string(from: dateThreshold)
         
-        var query = "kMDItemFSContentChangeDate >= '\(dateString)'"
+        // Query for recently accessed files (LastUsedDate) OR recently modified files (ContentChangeDate)
+        var query = "(kMDItemLastUsedDate >= '\(dateString)' || kMDItemFSContentChangeDate >= '\(dateString)')"
         
         // Add file type filters
         if filter.contains("png") {
@@ -366,13 +369,19 @@ For detailed documentation: man this
             }
         }
         
-        // Sort by modification time (most recent first)
+        // Sort by access time first, then modification time (most recent first)
         return results.sorted { path1, path2 in
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
             let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
             
-            let date1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
-            let date2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
+            // Try access date first, fall back to modification date
+            let access1 = attr1?[.accessDate] as? Date
+            let access2 = attr2?[.accessDate] as? Date
+            let mod1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
+            let mod2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
+            
+            let date1 = access1 ?? mod1
+            let date2 = access2 ?? mod2
             
             return date1 > date2
         }
