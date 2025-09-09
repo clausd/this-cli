@@ -251,7 +251,36 @@ For detailed documentation: man this
             results = searchManually(filter: filter)
         }
         
-        return results
+        // Sort results globally by access time (most recent first)
+        return results.sorted { path1, path2 in
+            // Get real access times using stat
+            var stat1 = stat()
+            var stat2 = stat()
+            
+            let access1 = if stat(path1, &stat1) == 0 {
+                Date(timeIntervalSince1970: TimeInterval(stat1.st_atime))
+            } else {
+                nil
+            }
+            
+            let access2 = if stat(path2, &stat2) == 0 {
+                Date(timeIntervalSince1970: TimeInterval(stat2.st_atime))
+            } else {
+                nil
+            }
+            
+            // Get modification dates as fallback
+            let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
+            let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
+            let mod1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
+            let mod2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
+            
+            // Use access date if available, otherwise fall back to modification date
+            let date1 = access1 ?? mod1
+            let date2 = access2 ?? mod2
+            
+            return date1 > date2
+        }
     }
     
     private func searchWithMdfind(filter: String) -> [String] {
@@ -282,59 +311,67 @@ For detailed documentation: man this
             query += " && (kMDItemDisplayName == '*.png'c || kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c || kMDItemDisplayName == '*.gif'c)"
         }
         
-        // Search each directory with timeout
-        for searchDir in config.searchDirectories {
-            let expandedDir = NSString(string: searchDir).expandingTildeInPath
+        // Search ALL directories in one mdfind call for better performance and global sorting
+        let expandedDirs = config.searchDirectories
+            .map { NSString(string: $0).expandingTildeInPath }
+            .filter { FileManager.default.fileExists(atPath: $0) }
+        
+        guard !expandedDirs.isEmpty else { return [] }
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+        
+        // Build arguments with multiple -onlyin flags
+        var arguments = [String]()
+        for dir in expandedDirs {
+            arguments.append("-onlyin")
+            arguments.append(dir)
+        }
+        arguments.append(query)
+        
+        process.arguments = arguments
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        
+        do {
+            try process.run()
             
-            guard FileManager.default.fileExists(atPath: expandedDir) else { continue }
+            // Add timeout to prevent hanging
+            let group = DispatchGroup()
+            group.enter()
             
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-            process.arguments = ["-onlyin", expandedDir, query]
-            
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-            
-            do {
-                try process.run()
-                
-                // Add timeout to prevent hanging
-                let group = DispatchGroup()
-                group.enter()
-                
-                var processFinished = false
-                DispatchQueue.global().async {
-                    process.waitUntilExit()
-                    processFinished = true
-                    group.leave()
-                }
-                
-                let result = group.wait(timeout: .now() + 2.0) // 2 second timeout
-                
-                if result == .timedOut {
-                    process.terminate()
-                    continue // Skip this directory and continue
-                }
-                
-                if processFinished && process.terminationStatus == 0 {
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    if let output = String(data: data, encoding: .utf8) {
-                        let files = output.components(separatedBy: .newlines)
-                            .filter { !$0.isEmpty }
-                            .filter { path in
-                                // Additional content filtering
-                                if !filter.isEmpty && !isFileTypeFilter(filter) {
-                                    return path.lowercased().contains(filter)
-                                }
-                                return true
-                            }
-                        results.append(contentsOf: files)
-                    }
-                }
-            } catch {
-                // Continue on error
+            var processFinished = false
+            DispatchQueue.global().async {
+                process.waitUntilExit()
+                processFinished = true
+                group.leave()
             }
+            
+            let result = group.wait(timeout: .now() + 5.0) // 5 second timeout for all dirs
+            
+            if result == .timedOut {
+                process.terminate()
+                return []
+            }
+            
+            if processFinished && process.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    results = output.components(separatedBy: .newlines)
+                        .filter { !$0.isEmpty }
+                        .filter { path in
+                            // Additional content filtering
+                            if !filter.isEmpty && !isFileTypeFilter(filter) {
+                                return path.lowercased().contains(filter)
+                            }
+                            return true
+                        }
+                }
+            }
+        } catch {
+            // Continue on error
         }
         
         return results
@@ -345,7 +382,7 @@ For detailed documentation: man this
         let daysAgo = config.maxRecentDays
         let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
         
-        // Search each directory manually
+        // Search each directory manually and collect ALL results first
         for searchDir in config.searchDirectories {
             let expandedDir = NSString(string: searchDir).expandingTildeInPath
             
@@ -355,10 +392,17 @@ For detailed documentation: man this
                 while let file = enumerator.nextObject() as? String {
                     let fullPath = "\(expandedDir)/\(file)"
                     
-                    // Check if file matches our criteria - check both access and modification dates
+                    // Check if file matches our criteria - use stat to get real access time
                     if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath) {
-                        let accessDate = attributes[FileAttributeKey(rawValue: "NSFileAccessDate")] as? Date
                         let modDate = attributes[.modificationDate] as? Date ?? Date.distantPast
+                        
+                        // Get actual access time using stat
+                        var statBuf = stat()
+                        let accessDate = if stat(fullPath, &statBuf) == 0 {
+                            Date(timeIntervalSince1970: TimeInterval(statBuf.st_atime))
+                        } else {
+                            nil
+                        }
                         
                         // File is recent if either accessed or modified within threshold
                         let isRecent = (accessDate != nil && accessDate! >= dateThreshold) || modDate >= dateThreshold
@@ -371,14 +415,27 @@ For detailed documentation: man this
             }
         }
         
-        // Sort by access time first, then modification time (most recent first)
+        // Sort ALL results globally by access time first, then modification time (most recent first)
         return results.sorted { path1, path2 in
+            // Get real access times using stat
+            var stat1 = stat()
+            var stat2 = stat()
+            
+            let access1 = if stat(path1, &stat1) == 0 {
+                Date(timeIntervalSince1970: TimeInterval(stat1.st_atime))
+            } else {
+                nil
+            }
+            
+            let access2 = if stat(path2, &stat2) == 0 {
+                Date(timeIntervalSince1970: TimeInterval(stat2.st_atime))
+            } else {
+                nil
+            }
+            
+            // Get modification dates as fallback
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
             let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
-            
-            // Get both access and modification dates
-            let access1 = attr1?[FileAttributeKey(rawValue: "NSFileAccessDate")] as? Date
-            let access2 = attr2?[FileAttributeKey(rawValue: "NSFileAccessDate")] as? Date
             let mod1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
             let mod2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
             
