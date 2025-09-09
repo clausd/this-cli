@@ -487,3 +487,239 @@ esac
 
 # Run the tests
 main
+#!/bin/bash
+# This Tool - Test Suite
+# Tests the clipboard management tools
+
+set -e  # Exit on any error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Logging functions
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+log_test() {
+    echo -e "${BLUE}[TEST]${NC} $1"
+}
+
+# Test configuration
+BUILD_DIR="build"
+THIS_BINARY="$BUILD_DIR/this"
+TEST_DATA_DIR="$HOME/.this"
+TEST_CONFIG="$HOME/.this.config"
+
+# Test counters
+TESTS_RUN=0
+TESTS_PASSED=0
+TESTS_FAILED=0
+
+# Helper functions
+run_test() {
+    local test_name="$1"
+    local test_command="$2"
+    local expected_exit_code="${3:-0}"
+    
+    TESTS_RUN=$((TESTS_RUN + 1))
+    log_test "Running: $test_name"
+    
+    if eval "$test_command" >/dev/null 2>&1; then
+        local actual_exit_code=$?
+        if [ $actual_exit_code -eq $expected_exit_code ]; then
+            log_info "✅ PASS: $test_name"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+        else
+            log_error "❌ FAIL: $test_name (exit code: $actual_exit_code, expected: $expected_exit_code)"
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+        fi
+    else
+        log_error "❌ FAIL: $test_name (command failed)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    fi
+}
+
+# Check if binaries exist
+check_binaries() {
+    log_test "Checking if binaries exist..."
+    
+    if [[ ! -f "$THIS_BINARY" ]]; then
+        log_error "Binary not found: $THIS_BINARY"
+        log_error "Please run 'make' first"
+        exit 1
+    fi
+    
+    log_info "✅ Found binary: $THIS_BINARY"
+}
+
+# Test basic functionality
+test_basic_functionality() {
+    log_test "Testing basic functionality..."
+    
+    # Test help/error handling - should fail gracefully when no clipboard data
+    run_test "No clipboard data handling" "$THIS_BINARY" 1
+    
+    # Test with recent files (should work if any files exist)
+    run_test "Recent files command" "$THIS_BINARY recent" 1
+}
+
+# Test configuration
+test_configuration() {
+    log_test "Testing configuration..."
+    
+    # Create a test config
+    local test_config_content='{
+  "searchDirectories": [
+    "~/Documents",
+    "~/Desktop"
+  ],
+  "maxRecentDays": 2
+}'
+    
+    # Backup existing config if it exists
+    if [[ -f "$TEST_CONFIG" ]]; then
+        cp "$TEST_CONFIG" "$TEST_CONFIG.backup"
+    fi
+    
+    # Create test config
+    echo "$test_config_content" > "$TEST_CONFIG"
+    
+    # Test that the tool can read the config (should still fail gracefully)
+    run_test "Config file reading" "$THIS_BINARY recent" 1
+    
+    # Restore original config
+    if [[ -f "$TEST_CONFIG.backup" ]]; then
+        mv "$TEST_CONFIG.backup" "$TEST_CONFIG"
+    else
+        rm -f "$TEST_CONFIG"
+    fi
+}
+
+# Test file filtering
+test_file_filtering() {
+    log_test "Testing file filtering..."
+    
+    # These should fail gracefully when no matching files exist
+    run_test "PNG filter" "$THIS_BINARY png" 1
+    run_test "Text filter" "$THIS_BINARY txt" 1
+    run_test "Image filter" "$THIS_BINARY image" 1
+    run_test "Recent PNG filter" "$THIS_BINARY recent png" 1
+}
+
+# Test pipe detection (basic test)
+test_pipe_detection() {
+    log_test "Testing pipe detection..."
+    
+    # Test piped output (should fail gracefully but test the pipe detection)
+    run_test "Piped output" "echo '' | $THIS_BINARY" 1
+}
+
+# Create some test files for file search testing
+create_test_files() {
+    log_test "Creating test files..."
+    
+    local test_dir="$HOME/Desktop/this_test_files"
+    mkdir -p "$test_dir"
+    
+    # Create some test files with recent timestamps
+    echo "Test text content" > "$test_dir/test.txt"
+    echo "Another test" > "$test_dir/another.txt"
+    touch "$test_dir/test.png"  # Empty PNG file for testing
+    
+    log_info "Created test files in: $test_dir"
+    echo "$test_dir"  # Return the path for cleanup
+}
+
+# Clean up test files
+cleanup_test_files() {
+    local test_dir="$1"
+    if [[ -n "$test_dir" && -d "$test_dir" ]]; then
+        log_test "Cleaning up test files..."
+        rm -rf "$test_dir"
+        log_info "Cleaned up: $test_dir"
+    fi
+}
+
+# Test with actual files
+test_with_files() {
+    log_test "Testing with actual files..."
+    
+    local test_dir=$(create_test_files)
+    
+    # Wait a moment for file system to update
+    sleep 1
+    
+    # Test recent files (should now find our test files)
+    run_test "Recent files with test data" "$THIS_BINARY recent" 0
+    run_test "Recent txt files" "$THIS_BINARY recent txt" 0
+    
+    # Clean up
+    cleanup_test_files "$test_dir"
+}
+
+# Show test summary
+show_summary() {
+    echo ""
+    log_info "Test Summary:"
+    echo "  Tests run: $TESTS_RUN"
+    echo "  Passed: $TESTS_PASSED"
+    echo "  Failed: $TESTS_FAILED"
+    
+    if [ $TESTS_FAILED -eq 0 ]; then
+        log_info "🎉 All tests passed!"
+        return 0
+    else
+        log_error "❌ Some tests failed"
+        return 1
+    fi
+}
+
+# Main test execution
+main() {
+    log_info "Starting This Tool test suite..."
+    
+    check_binaries
+    test_basic_functionality
+    test_configuration
+    test_file_filtering
+    test_pipe_detection
+    test_with_files
+    
+    show_summary
+}
+
+# Handle script arguments
+case "${1:-}" in
+    --help|-h)
+        echo "This Tool Test Suite"
+        echo ""
+        echo "Usage: $0 [options]"
+        echo ""
+        echo "Options:"
+        echo "  --help, -h    Show this help message"
+        echo ""
+        echo "This script tests the This Tool functionality including:"
+        echo "  - Binary existence and basic execution"
+        echo "  - Configuration file handling"
+        echo "  - File filtering and search"
+        echo "  - Pipe detection"
+        echo "  - Recent file functionality"
+        exit 0
+        ;;
+esac
+
+# Run main test suite
+main
