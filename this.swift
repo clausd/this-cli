@@ -215,19 +215,22 @@ class ThisTool {
         let timestamp = dateThreshold.timeIntervalSince1970
         
         // Build simpler mdfind query using modification date
-        var query = "kMDItemFSContentChangeDate >= \$time.iso(\(dateThreshold.ISO8601Format()))"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: dateThreshold)
+        var query = "kMDItemFSContentChangeDate >= '\(dateString)'"
         
         // Add file type filters
         if filter.contains("png") {
-            query += " && kMDItemDisplayName == '*.png'"
+            query += " && kMDItemDisplayName == '*.png'c"
         } else if filter.contains("jpg") || filter.contains("jpeg") {
-            query += " && (kMDItemDisplayName == '*.jpg' || kMDItemDisplayName == '*.jpeg')"
+            query += " && (kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c)"
         } else if filter.contains("txt") || filter.contains("text") {
-            query += " && kMDItemDisplayName == '*.txt'"
+            query += " && kMDItemDisplayName == '*.txt'c"
         } else if filter.contains("pdf") {
-            query += " && kMDItemDisplayName == '*.pdf'"
+            query += " && kMDItemDisplayName == '*.pdf'c"
         } else if filter.contains("image") || filter.contains("img") {
-            query += " && (kMDItemDisplayName == '*.png' || kMDItemDisplayName == '*.jpg' || kMDItemDisplayName == '*.jpeg' || kMDItemDisplayName == '*.gif')"
+            query += " && (kMDItemDisplayName == '*.png'c || kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c || kMDItemDisplayName == '*.gif'c)"
         }
         
         // Search in configured directories
