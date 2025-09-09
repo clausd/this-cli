@@ -355,13 +355,15 @@ For detailed documentation: man this
                 while let file = enumerator.nextObject() as? String {
                     let fullPath = "\(expandedDir)/\(file)"
                     
-                    // Check if file matches our criteria
-                    if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath),
-                       let modDate = attributes[.modificationDate] as? Date,
-                       modDate >= dateThreshold {
+                    // Check if file matches our criteria - check both access and modification dates
+                    if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath) {
+                        let accessDate = attributes[.accessDate] as? Date
+                        let modDate = attributes[.modificationDate] as? Date ?? Date.distantPast
                         
-                        // Apply filters
-                        if matchesFileFilter(path: fullPath, filter: filter) {
+                        // File is recent if either accessed or modified within threshold
+                        let isRecent = (accessDate != nil && accessDate! >= dateThreshold) || modDate >= dateThreshold
+                        
+                        if isRecent && matchesFileFilter(path: fullPath, filter: filter) {
                             results.append(fullPath)
                         }
                     }
