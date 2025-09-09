@@ -145,17 +145,34 @@ class ThisTool {
     private func getMostRecentClipboardEntry(matching filter: String? = nil) -> ClipboardEntry? {
         let historyFile = dataDirectory.appendingPathComponent("history.json")
         
-        guard let data = try? Data(contentsOf: historyFile),
-              let history = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else {
+        // Debug: Check if file exists
+        if !FileManager.default.fileExists(atPath: historyFile.path) {
+            print("Debug: History file does not exist at: \(historyFile.path)", to: &standardError)
             return nil
         }
         
-        if let filter = filter {
-            return history.first { entry in
-                matchesFilter(entry: entry, filter: filter)
-            }
+        guard let data = try? Data(contentsOf: historyFile) else {
+            print("Debug: Could not read history file at: \(historyFile.path)", to: &standardError)
+            return nil
         }
         
+        guard let history = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else {
+            print("Debug: Could not decode JSON from history file", to: &standardError)
+            print("Debug: File contents: \(String(data: data, encoding: .utf8) ?? "invalid UTF-8")", to: &standardError)
+            return nil
+        }
+        
+        print("Debug: Successfully loaded \(history.count) entries from history", to: &standardError)
+        
+        if let filter = filter {
+            let filtered = history.first { entry in
+                matchesFilter(entry: entry, filter: filter)
+            }
+            print("Debug: Filter '\(filter)' matched: \(filtered?.content ?? "none")", to: &standardError)
+            return filtered
+        }
+        
+        print("Debug: Returning most recent entry: \(history.first?.content ?? "none")", to: &standardError)
         return history.first
     }
     
