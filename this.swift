@@ -53,6 +53,9 @@ class ThisTool {
         do {
             if args.isEmpty {
                 try handleDefault()
+            } else if args[0] == "--help" || args[0] == "-h" {
+                showHelp()
+                exit(0)
             } else if args[0] == "recent" {
                 try handleRecent(filters: Array(args.dropFirst()))
             } else {
@@ -62,6 +65,34 @@ class ThisTool {
             fputs("Error: \(error.localizedDescription)\n", stderr)
             exit(1)
         }
+    }
+    
+    private func showHelp() {
+        print("""
+this - Context-aware clipboard and file tool
+
+USAGE:
+    this                    Get most recent clipboard content
+    this [filter]           Get clipboard content matching filter
+    this recent [filter]    Get most recent file matching filter
+
+EXAMPLES:
+    this | grep foo         Pipe clipboard content to grep
+    this > file.txt         Save clipboard content to file
+    open `this`             Open most relevant file
+    this image              Get most recent image
+    this recent txt         Get most recent .txt file
+
+FILTERS:
+    image, img              Images (png, jpg, gif)
+    text, txt               Text files or clipboard text
+    png, jpg, pdf           Specific file types
+    [keyword]               Content containing keyword
+
+CONFIG:
+    ~/.this.config          JSON configuration file
+    ~/.this/                Data directory
+""")
     }
     
     // MARK: - Command Handlers
