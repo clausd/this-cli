@@ -154,10 +154,16 @@ For detailed documentation: man this
             return
         }
         
-        // If no clipboard, just fail fast - don't search files to avoid hanging
-        fputs("No clipboard history found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
-        fputs("Or use 'this recent' to search recent files.\n", stderr)
-        throw ThisError.noContentFound
+        // If no clipboard, fall back to recent files
+        fputs("No clipboard history found, searching recent files...\n", stderr)
+        let recentFiles = getRecentFiles()
+        
+        guard let mostRecent = recentFiles.first else {
+            fputs("Start clipboard monitoring with: clipboard-helper &\n", stderr)
+            throw ThisError.noContentFound
+        }
+        
+        print(mostRecent)
     }
     
     private func handleRecent(filters: [String]) throws {
@@ -177,18 +183,19 @@ For detailed documentation: man this
         // Try clipboard with filter first (no monitor checks to avoid hanging)
         if let entry = getClipboardEntry(matching: filter) {
             output(entry)
-        } else {
-            // Try recent files with filter
-            let recentFiles = getRecentFiles(filter: filter)
-            guard let mostRecent = recentFiles.first else {
-                // Only suggest starting monitor if this was a clipboard-related query
-                if !filter.contains("recent") {
-                    fputs("No matching clipboard content found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
-                }
-                throw ThisError.noMatchingContent(filter)
-            }
-            print(mostRecent)
+            return
         }
+        
+        // If no matching clipboard content, fall back to recent files with filter
+        fputs("No matching clipboard content, searching recent files...\n", stderr)
+        let recentFiles = getRecentFiles(filter: filter)
+        
+        guard let mostRecent = recentFiles.first else {
+            fputs("Start clipboard monitoring with: clipboard-helper &\n", stderr)
+            throw ThisError.noMatchingContent(filter)
+        }
+        
+        print(mostRecent)
     }
     
     // MARK: - Output Logic
