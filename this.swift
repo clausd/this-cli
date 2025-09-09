@@ -34,7 +34,11 @@ class ThisTool {
         dataDirectory = homeDir.appendingPathComponent(".this")
         
         // Create data directory if it doesn't exist
-        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        } catch {
+            // Continue even if directory creation fails
+        }
         
         // Load config
         let configPath = homeDir.appendingPathComponent(".this.config")
@@ -43,14 +47,14 @@ class ThisTool {
             config = loadedConfig
         } else {
             config = Config.default
-            // Save default config
+            // Always try to save default config
             do {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = .prettyPrinted
                 let configData = try encoder.encode(config)
                 try configData.write(to: configPath)
             } catch {
-                // Silently continue if config save fails
+                // Continue even if config save fails
             }
         }
     }

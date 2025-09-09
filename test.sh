@@ -72,15 +72,23 @@ test_config_creation() {
     # Run the tool to trigger config creation (it will fail due to no history, but should create config)
     timeout 5s build/this 2>/dev/null || true
     
+    # Give it a moment to complete file operations
+    sleep 0.1
+    
     # Check if config was created
     local result=0
     if [[ -f "$temp_home/.this.config" ]]; then
         result=0
+        echo "Debug: Config file created successfully" >&2
+        echo "Debug: Config content:" >&2
+        head -3 "$temp_home/.this.config" >&2 || true
     else
         result=1
         # Debug: list what was actually created
         echo "Debug: Contents of $temp_home:" >&2
         ls -la "$temp_home" >&2 || true
+        echo "Debug: Checking for any .this* files:" >&2
+        find "$temp_home" -name ".this*" -ls >&2 || true
     fi
     
     # Restore original HOME and cleanup
@@ -98,15 +106,23 @@ test_data_directory() {
     # Run the tool to trigger directory creation
     timeout 5s build/this 2>/dev/null || true
     
+    # Give it a moment to complete file operations
+    sleep 0.1
+    
     # Check if data directory was created
     local result=0
     if [[ -d "$temp_home/.this" ]]; then
         result=0
+        echo "Debug: Data directory created successfully" >&2
+        echo "Debug: Directory contents:" >&2
+        ls -la "$temp_home/.this" >&2 || true
     else
         result=1
         # Debug: list what was actually created
         echo "Debug: Contents of $temp_home:" >&2
         ls -la "$temp_home" >&2 || true
+        echo "Debug: Checking for any .this* files/dirs:" >&2
+        find "$temp_home" -name ".this*" -ls >&2 || true
     fi
     
     # Restore original HOME and cleanup
