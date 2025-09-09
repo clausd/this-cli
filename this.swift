@@ -14,6 +14,21 @@ struct ClipboardEntry: Codable {
     }
 }
 
+// Unified item type for comparing across sources
+enum RecentItem {
+    case clipboardEntry(ClipboardEntry)
+    case filePath(String, Date)
+    
+    var timestamp: Date {
+        switch self {
+        case .clipboardEntry(let entry):
+            return entry.timestamp
+        case .filePath(_, let date):
+            return date
+        }
+    }
+}
+
 struct Config: Codable {
     let searchDirectories: [String]
     let maxRecentDays: Int
@@ -148,22 +163,13 @@ For detailed documentation: man this
     
     // MARK: - Command Handlers
     private func handleDefault() throws {
-        // Try clipboard first (no monitor checks to avoid hanging)
-        if let entry = getClipboardEntry() {
-            output(entry)
-            return
-        }
-        
-        // If no clipboard, fall back to recent files
-        fputs("No clipboard history found, searching recent files...\n", stderr)
-        let recentFiles = getRecentFiles()
-        
-        guard let mostRecent = recentFiles.first else {
-            fputs("Start clipboard monitoring with: clipboard-helper &\n", stderr)
+        // Get the most recent item across all sources
+        if let mostRecent = getMostRecentItem() {
+            outputItem(mostRecent)
+        } else {
+            fputs("No clipboard history or recent files found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
             throw ThisError.noContentFound
         }
-        
-        print(mostRecent)
     }
     
     private func handleRecent(filters: [String]) throws {
@@ -180,22 +186,13 @@ For detailed documentation: man this
     private func handleFiltered(filters: [String]) throws {
         let filter = filters.joined(separator: " ").lowercased()
         
-        // Try clipboard with filter first (no monitor checks to avoid hanging)
-        if let entry = getClipboardEntry(matching: filter) {
-            output(entry)
-            return
-        }
-        
-        // If no matching clipboard content, fall back to recent files with filter
-        fputs("No matching clipboard content, searching recent files...\n", stderr)
-        let recentFiles = getRecentFiles(filter: filter)
-        
-        guard let mostRecent = recentFiles.first else {
-            fputs("Start clipboard monitoring with: clipboard-helper &\n", stderr)
+        // Get the most recent item across all sources with filter
+        if let mostRecent = getMostRecentItem(matching: filter) {
+            outputItem(mostRecent)
+        } else {
+            fputs("No content found matching filter: \(filter). Start clipboard monitoring with: clipboard-helper &\n", stderr)
             throw ThisError.noMatchingContent(filter)
         }
-        
-        print(mostRecent)
     }
     
     // MARK: - Output Logic
@@ -217,8 +214,55 @@ For detailed documentation: man this
         }
     }
     
+    private func outputItem(_ item: RecentItem) {
+        switch item {
+        case .clipboardEntry(let entry):
+            output(entry)
+        case .filePath(let path, _):
+            print(path)
+        }
+    }
+    
     // MARK: - Data Access
+    private func getMostRecentItem(matching filter: String? = nil) -> RecentItem? {
+        var allItems: [RecentItem] = []
+        
+        // Get clipboard entries
+        if let clipboardEntries = getClipboardEntries() {
+            for entry in clipboardEntries {
+                if let filter = filter {
+                    if matchesFilter(entry: entry, filter: filter) {
+                        allItems.append(.clipboardEntry(entry))
+                    }
+                } else {
+                    allItems.append(.clipboardEntry(entry))
+                }
+            }
+        }
+        
+        // Get recent files
+        let recentFiles = getRecentFiles(filter: filter ?? "")
+        for filePath in recentFiles {
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: filePath),
+               let modDate = attributes[.modificationDate] as? Date {
+                allItems.append(.filePath(filePath, modDate))
+            }
+        }
+        
+        // Sort by timestamp (most recent first) and return the first
+        return allItems.sorted { $0.timestamp > $1.timestamp }.first
+    }
+    
     private func getClipboardEntry(matching filter: String? = nil) -> ClipboardEntry? {
+        return getClipboardEntries()?.first { entry in
+            if let filter = filter {
+                return matchesFilter(entry: entry, filter: filter)
+            }
+            return true
+        }
+    }
+    
+    private func getClipboardEntries() -> [ClipboardEntry]? {
         let historyFile = dataDirectory.appendingPathComponent("history.json")
         
         guard let data = try? Data(contentsOf: historyFile) else {
@@ -231,19 +275,13 @@ For detailed documentation: man this
         // First try ISO8601
         decoder.dateDecodingStrategy = .iso8601
         if let history = try? decoder.decode([ClipboardEntry].self, from: data) {
-            if let filter = filter {
-                return history.first { matchesFilter(entry: $0, filter: filter) }
-            }
-            return history.first
+            return history
         }
         
         // Try default date format
         decoder.dateDecodingStrategy = .deferredToDate
         if let history = try? decoder.decode([ClipboardEntry].self, from: data) {
-            if let filter = filter {
-                return history.first { matchesFilter(entry: $0, filter: filter) }
-            }
-            return history.first
+            return history
         }
         
         // Try custom date formatter
@@ -253,10 +291,7 @@ For detailed documentation: man this
         decoder.dateDecodingStrategy = .formatted(formatter)
         
         if let history = try? decoder.decode([ClipboardEntry].self, from: data) {
-            if let filter = filter {
-                return history.first { matchesFilter(entry: $0, filter: filter) }
-            }
-            return history.first
+            return history
         }
         
         return nil
