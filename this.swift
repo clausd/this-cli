@@ -147,16 +147,13 @@ For detailed documentation: man this
     
     // MARK: - Command Handlers
     private func handleDefault() throws {
-        // Try clipboard first (without auto-starting monitor to avoid hanging)
+        // Try clipboard first (no monitor checks to avoid hanging)
         if let entry = getClipboardEntry() {
             output(entry)
         } else if let recentFile = getRecentFiles().first {
             print(recentFile)
         } else {
-            // Only try to start monitor if we have no content at all
-            if !isClipboardMonitorRunning(timeout: 0.5) {
-                fputs("No clipboard history found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
-            }
+            fputs("No clipboard history found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
             throw ThisError.noContentFound
         }
     }
@@ -175,7 +172,7 @@ For detailed documentation: man this
     private func handleFiltered(filters: [String]) throws {
         let filter = filters.joined(separator: " ").lowercased()
         
-        // Try clipboard with filter first (without auto-starting to avoid hanging)
+        // Try clipboard with filter first (no monitor checks to avoid hanging)
         if let entry = getClipboardEntry(matching: filter) {
             output(entry)
         } else {
@@ -183,7 +180,7 @@ For detailed documentation: man this
             let recentFiles = getRecentFiles(filter: filter)
             guard let mostRecent = recentFiles.first else {
                 // Only suggest starting monitor if this was a clipboard-related query
-                if !filter.contains("recent") && !isClipboardMonitorRunning(timeout: 0.5) {
+                if !filter.contains("recent") {
                     fputs("No matching clipboard content found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
                 }
                 throw ThisError.noMatchingContent(filter)
