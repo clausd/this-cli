@@ -42,14 +42,6 @@ class ThisTool {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         dataDirectory = homeDir.appendingPathComponent(".this")
         
-        // Always create data directory first
-        do {
-            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-            // Print error but continue
-            print("Warning: Could not create data directory: \(error)", to: &standardError)
-        }
-        
         // Load config or use default
         let configPath = homeDir.appendingPathComponent(".this.config")
         if let configData = try? Data(contentsOf: configPath),

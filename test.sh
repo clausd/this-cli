@@ -187,26 +187,6 @@ EOF
     return $result
 }
 
-# Test data directory creation
-test_data_directory() {
-    # Check if data directory was created (should exist from config creation test)
-    local result=0
-    if [[ -d "$TEST_HOME/.this" ]]; then
-        result=0
-        echo "Debug: Data directory exists" >&2
-        echo "Debug: Directory contents:" >&2
-        ls -la "$TEST_HOME/.this" >&2 || true
-    else
-        result=1
-        # Debug: list what was actually created
-        echo "Debug: Contents of $TEST_HOME:" >&2
-        ls -la "$TEST_HOME" >&2 || true
-        echo "Debug: Checking for any .this* files/dirs:" >&2
-        find "$TEST_HOME" -name ".this*" -ls >&2 || true
-    fi
-    
-    return $result
-}
 
 # Test clipboard history reading with mock data
 test_clipboard_history_reading() {
@@ -432,7 +412,6 @@ main() {
     
     # Configuration tests (these set up the shared environment)
     run_test "Config file creation and content" "test_config_creation"
-    run_test "Data directory creation" "test_data_directory"
     
     # Core functionality tests (these use the shared environment)
     run_test "Clipboard history reading" "test_clipboard_history_reading"
