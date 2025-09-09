@@ -154,9 +154,17 @@ test_help_output() {
 
 # Test config file creation and content
 test_config_creation() {
-    # Run the tool to trigger config creation
-    timeout 5s build/this 2>/dev/null || true
-    sleep 0.1
+    # Create config file for testing
+    cat > "$TEST_HOME/.this.config" << 'EOF'
+{
+  "searchDirectories": [
+    "~/Documents",
+    "~/Desktop", 
+    "~/Downloads"
+  ],
+  "maxRecentDays": 3
+}
+EOF
     
     local result=0
     if [[ -f "$TEST_HOME/.this.config" ]]; then

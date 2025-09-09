@@ -50,22 +50,13 @@ class ThisTool {
             print("Warning: Could not create data directory: \(error)", to: &standardError)
         }
         
-        // Load or create config
+        // Load config or use default
         let configPath = homeDir.appendingPathComponent(".this.config")
         if let configData = try? Data(contentsOf: configPath),
            let loadedConfig = try? JSONDecoder().decode(Config.self, from: configData) {
             config = loadedConfig
         } else {
             config = Config.default
-            // Always save default config
-            do {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = .prettyPrinted
-                let configData = try encoder.encode(config)
-                try configData.write(to: configPath, options: .atomic)
-            } catch {
-                print("Warning: Could not save config file: \(error)", to: &standardError)
-            }
         }
     }
     
