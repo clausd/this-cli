@@ -192,10 +192,21 @@ EOF
 test_clipboard_history_reading() {
     create_mock_history
     
-    # Test basic clipboard retrieval (should get most recent)
-    local output=$(timeout 5s build/this 2>/dev/null || true)
-    local result=0
+    # Test basic clipboard retrieval (should get most recent) - capture both stdout and stderr
+    local output
+    local stderr_output
+    stderr_output=$(timeout 5s build/this 2>&1 >/dev/null || true)
+    output=$(timeout 5s build/this 2>/dev/null || true)
+    local exit_code=$?
     
+    echo "Debug: Tool exit code: $exit_code" >&2
+    echo "Debug: Tool stderr: '$stderr_output'" >&2
+    echo "Debug: Tool stdout: '$output'" >&2
+    echo "Debug: History file exists: $(test -f "$TEST_HOME/.this/history.json" && echo "yes" || echo "no")" >&2
+    echo "Debug: History file contents:" >&2
+    cat "$TEST_HOME/.this/history.json" >&2 || echo "Could not read history file" >&2
+    
+    local result=0
     if [[ "$output" == *"Hello world text content"* ]]; then
         result=0
     else
