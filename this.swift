@@ -355,12 +355,13 @@ For detailed documentation: man this
                 while let file = enumerator.nextObject() as? String {
                     let fullPath = "\(expandedDir)/\(file)"
                     
-                    // Check if file matches our criteria - check modification date
+                    // Check if file matches our criteria - check both access and modification dates
                     if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath) {
+                        let accessDate = attributes[FileAttributeKey(rawValue: "NSFileAccessDate")] as? Date
                         let modDate = attributes[.modificationDate] as? Date ?? Date.distantPast
                         
-                        // File is recent if modified within threshold
-                        let isRecent = modDate >= dateThreshold
+                        // File is recent if either accessed or modified within threshold
+                        let isRecent = (accessDate != nil && accessDate! >= dateThreshold) || modDate >= dateThreshold
                         
                         if isRecent && matchesFileFilter(path: fullPath, filter: filter) {
                             results.append(fullPath)
@@ -370,13 +371,20 @@ For detailed documentation: man this
             }
         }
         
-        // Sort by modification time (most recent first)
+        // Sort by access time first, then modification time (most recent first)
         return results.sorted { path1, path2 in
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
             let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
             
-            let date1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
-            let date2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
+            // Get both access and modification dates
+            let access1 = attr1?[FileAttributeKey(rawValue: "NSFileAccessDate")] as? Date
+            let access2 = attr2?[FileAttributeKey(rawValue: "NSFileAccessDate")] as? Date
+            let mod1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
+            let mod2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
+            
+            // Use access date if available, otherwise fall back to modification date
+            let date1 = access1 ?? mod1
+            let date2 = access2 ?? mod2
             
             return date1 > date2
         }
