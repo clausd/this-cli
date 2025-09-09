@@ -147,15 +147,16 @@ For detailed documentation: man this
     
     // MARK: - Command Handlers
     private func handleDefault() throws {
-        // Ensure clipboard monitor is running
-        ensureClipboardMonitorRunning()
-        
-        // Try clipboard first, then recent files
+        // Try clipboard first (without auto-starting monitor to avoid hanging)
         if let entry = getClipboardEntry() {
             output(entry)
         } else if let recentFile = getRecentFiles().first {
             print(recentFile)
         } else {
+            // Only try to start monitor if we have no content at all
+            if !isClipboardMonitorRunning(timeout: 0.5) {
+                fputs("No clipboard history found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
+            }
             throw ThisError.noContentFound
         }
     }
@@ -174,18 +175,17 @@ For detailed documentation: man this
     private func handleFiltered(filters: [String]) throws {
         let filter = filters.joined(separator: " ").lowercased()
         
-        // Ensure clipboard monitor is running for clipboard-related queries
-        if !filter.contains("recent") {
-            ensureClipboardMonitorRunning()
-        }
-        
-        // Try clipboard with filter first
+        // Try clipboard with filter first (without auto-starting to avoid hanging)
         if let entry = getClipboardEntry(matching: filter) {
             output(entry)
         } else {
             // Try recent files with filter
             let recentFiles = getRecentFiles(filter: filter)
             guard let mostRecent = recentFiles.first else {
+                // Only suggest starting monitor if this was a clipboard-related query
+                if !filter.contains("recent") && !isClipboardMonitorRunning(timeout: 0.5) {
+                    fputs("No matching clipboard content found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
+                }
                 throw ThisError.noMatchingContent(filter)
             }
             print(mostRecent)
@@ -383,22 +383,19 @@ For detailed documentation: man this
     
     // MARK: - Clipboard Monitor Management
     private func ensureClipboardMonitorRunning() {
-        // Check if clipboard-helper is already running (with timeout)
-        if isClipboardMonitorRunning(timeout: 2.0) {
+        // Check if clipboard-helper is already running (with short timeout)
+        if isClipboardMonitorRunning(timeout: 0.5) {
             return
         }
         
-        // Try to start it
+        // Try to start it (non-blocking)
         startClipboardMonitor()
         
-        // Give it a moment to start
-        usleep(500_000) // 0.5 seconds
+        // Give it a brief moment to start
+        usleep(100_000) // 0.1 seconds
         
-        // Verify it started (with timeout)
-        if !isClipboardMonitorRunning(timeout: 2.0) {
-            fputs("Warning: Could not start clipboard monitor. Some features may not work.\n", stderr)
-            fputs("Try running: clipboard-helper &\n", stderr)
-        }
+        // Don't wait long to verify - just inform user
+        fputs("Started clipboard monitor in background.\n", stderr)
     }
     
     private func isClipboardMonitorRunning(timeout: TimeInterval = 5.0) -> Bool {
