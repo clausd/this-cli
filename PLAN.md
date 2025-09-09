@@ -160,6 +160,7 @@ this recent image        # Most recent image file (not clipboard)
 - **Man Pages** - Traditional Unix documentation
   - `man this` - Command line tool reference
   - `man this.config` - Configuration file format
+  - `man clipboard-helper` - Menu bar app reference
 
 ## 6. Implementation Phases
 
@@ -191,6 +192,8 @@ this recent image        # Most recent image file (not clipboard)
 - [ ] Enhanced installer with GUI prompts
 - [ ] Launch agent setup and management
 - [ ] Uninstaller with complete cleanup
+- [ ] Man page creation and installation
+- [ ] Shell completion scripts (bash, zsh, fish)
 
 ### Phase 4: Distribution
 - [ ] Homebrew formula

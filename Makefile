@@ -4,13 +4,14 @@
 SWIFT_FLAGS = -O
 INSTALL_PREFIX = /usr/local
 BIN_DIR = $(INSTALL_PREFIX)/bin
+MAN_DIR = $(INSTALL_PREFIX)/share/man/man1
 BUILD_DIR = build
 
 # Targets
 THIS_BINARY = $(BUILD_DIR)/this
 CLIPBOARD_HELPER_BINARY = $(BUILD_DIR)/clipboard-helper
 
-.PHONY: all clean install uninstall test help
+.PHONY: all clean install uninstall test help man
 
 # Default target
 all: $(THIS_BINARY) $(CLIPBOARD_HELPER_BINARY)
@@ -55,6 +56,13 @@ test: all
 	@./test.sh
 	@echo "✅ Tests complete"
 
+# Install man page
+man: this.1
+	@echo "Installing man page..."
+	@mkdir -p $(MAN_DIR)
+	@cp this.1 $(MAN_DIR)/this.1
+	@echo "✅ Man page installed: $(MAN_DIR)/this.1"
+
 # Show help
 help:
 	@echo "This Tool - Build System"
@@ -65,8 +73,10 @@ help:
 	@echo "  install    - Build and install to system"
 	@echo "  uninstall  - Remove from system"
 	@echo "  test       - Run test suite"
+	@echo "  man        - Install man page"
 	@echo "  help       - Show this help"
 	@echo ""
 	@echo "Configuration:"
 	@echo "  INSTALL_PREFIX = $(INSTALL_PREFIX)"
 	@echo "  BIN_DIR = $(BIN_DIR)"
+	@echo "  MAN_DIR = $(MAN_DIR)"

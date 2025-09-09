@@ -1,0 +1,157 @@
+.TH THIS 1 "2025-09-09" "This Tool 1.0" "User Commands"
+.SH NAME
+this \- context-aware clipboard and file tool
+.SH SYNOPSIS
+.B this
+[\fIOPTION\fR] [\fIFILTER\fR]
+.br
+.B this recent
+[\fIFILTER\fR]
+.br
+.B this status
+.br
+.B this \-s
+.br
+.B this \-h
+.SH DESCRIPTION
+.B this
+is a context-aware command-line tool that provides intelligent access to clipboard history and recent files. It automatically determines whether to output content directly or file paths based on usage context (pipes, redirects, or interactive use).
+
+The tool works in conjunction with the
+.B clipboard-helper
+menu bar application to maintain clipboard history and search recent files using Spotlight metadata.
+
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show help message and exit
+.TP
+.B \-s, status
+Show clipboard monitor status and configuration
+.TP
+.B recent \fR[\fIFILTER\fR]
+Search recent files instead of clipboard history
+
+.SH FILTERS
+Filters can be applied to both clipboard content and recent files:
+
+.TP
+.B image, img
+Filter to images (PNG, JPG, GIF)
+.TP
+.B text, txt
+Filter to text files or clipboard text content
+.TP
+.B png, jpg, pdf
+Filter to specific file extensions
+.TP
+.B \fIkeyword\fR
+Filter content containing the specified keyword
+
+.SH USAGE PATTERNS
+.SS Piped Output
+When output is piped or redirected, 
+.B this
+outputs content directly:
+.PP
+.nf
+.RS
+this | grep "search term"
+this > output.txt
+echo "prefix: $(this)"
+.RE
+.fi
+
+.SS Interactive Use
+When used interactively or in command substitution, 
+.B this
+intelligently chooses between content and file paths:
+.PP
+.nf
+.RS
+open `this`
+cp `this` backup/
+cat `this image`
+.RE
+.fi
+
+.SH EXAMPLES
+.TP
+.B this
+Get most recent clipboard content
+.TP
+.B this image
+Get most recent image from clipboard
+.TP
+.B this recent txt
+Get path to most recent .txt file
+.TP
+.B this | grep foo
+Search clipboard content for "foo"
+.TP
+.B open `this recent pdf`
+Open most recent PDF file
+.TP
+.B this -s
+Show quick status information
+
+.SH CONFIGURATION
+.TP
+.B ~/.this.config
+JSON configuration file specifying search directories and preferences:
+.PP
+.nf
+.RS
+{
+  "searchDirectories": [
+    "~/Documents",
+    "~/Desktop",
+    "~/Downloads"
+  ],
+  "maxRecentDays": 3
+}
+.RE
+.fi
+
+.TP
+.B ~/.this/
+Data directory containing clipboard history and temporary files
+
+.SH FILES
+.TP
+.B ~/.this/history.json
+Clipboard history in JSON format
+.TP
+.B ~/.this.config
+User configuration file
+.TP
+.B /usr/local/bin/this
+Main executable
+.TP
+.B /usr/local/bin/clipboard-helper
+Background clipboard monitor
+
+.SH ENVIRONMENT
+The tool respects standard environment variables and uses Spotlight (mdfind) for file searching when available.
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+No content found or error occurred
+
+.SH SEE ALSO
+.BR clipboard-helper (1),
+.BR mdfind (1),
+.BR pbpaste (1)
+
+.SH BUGS
+Report bugs at: https://github.com/user/this-tool/issues
+
+.SH AUTHOR
+Written for context-aware command-line workflows.
+
+.SH COPYRIGHT
+This is free software; see the source for copying conditions.

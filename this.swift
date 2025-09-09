@@ -56,7 +56,7 @@ class ThisTool {
             } else if args[0] == "--help" || args[0] == "-h" {
                 showHelp()
                 exit(0)
-            } else if args[0] == "status" {
+            } else if args[0] == "status" || args[0] == "-s" {
                 showStatus()
                 exit(0)
             } else if args[0] == "recent" {
@@ -78,7 +78,8 @@ USAGE:
     this                    Get most recent clipboard content
     this [filter]           Get clipboard content matching filter
     this recent [filter]    Get most recent file matching filter
-    this status             Show clipboard monitor status
+    this status, -s         Show clipboard monitor status
+    this --help, -h         Show this help message
 
 EXAMPLES:
     this | grep foo         Pipe clipboard content to grep
@@ -86,6 +87,7 @@ EXAMPLES:
     open `this`             Open most relevant file
     this image              Get most recent image
     this recent txt         Get most recent .txt file
+    this -s                 Quick status check
 
 FILTERS:
     image, img              Images (png, jpg, gif)
@@ -96,6 +98,8 @@ FILTERS:
 CONFIG:
     ~/.this.config          JSON configuration file
     ~/.this/                Data directory
+
+For detailed documentation: man this
 """)
     }
     
@@ -103,8 +107,8 @@ CONFIG:
         print("This Tool Status")
         print("================")
         
-        // Check clipboard monitor
-        let monitorRunning = isClipboardMonitorRunning()
+        // Check clipboard monitor (with shorter timeout for status)
+        let monitorRunning = isClipboardMonitorRunning(timeout: 1.0)
         print("Clipboard Monitor: \(monitorRunning ? "✅ Running" : "❌ Not Running")")
         
         // Check data directory
@@ -379,8 +383,8 @@ CONFIG:
     
     // MARK: - Clipboard Monitor Management
     private func ensureClipboardMonitorRunning() {
-        // Check if clipboard-helper is already running
-        if isClipboardMonitorRunning() {
+        // Check if clipboard-helper is already running (with timeout)
+        if isClipboardMonitorRunning(timeout: 2.0) {
             return
         }
         
@@ -390,14 +394,14 @@ CONFIG:
         // Give it a moment to start
         usleep(500_000) // 0.5 seconds
         
-        // Verify it started
-        if !isClipboardMonitorRunning() {
+        // Verify it started (with timeout)
+        if !isClipboardMonitorRunning(timeout: 2.0) {
             fputs("Warning: Could not start clipboard monitor. Some features may not work.\n", stderr)
             fputs("Try running: clipboard-helper &\n", stderr)
         }
     }
     
-    private func isClipboardMonitorRunning() -> Bool {
+    private func isClipboardMonitorRunning(timeout: TimeInterval = 5.0) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         process.arguments = ["-f", "clipboard-helper"]
@@ -408,12 +412,33 @@ CONFIG:
         
         do {
             try process.run()
-            process.waitUntilExit()
             
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
+            // Wait with timeout
+            let group = DispatchGroup()
+            group.enter()
             
-            return process.terminationStatus == 0 && !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            var processFinished = false
+            DispatchQueue.global().async {
+                process.waitUntilExit()
+                processFinished = true
+                group.leave()
+            }
+            
+            let result = group.wait(timeout: .now() + timeout)
+            
+            if result == .timedOut {
+                process.terminate()
+                return false
+            }
+            
+            if processFinished {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+                
+                return process.terminationStatus == 0 && !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            
+            return false
         } catch {
             return false
         }
