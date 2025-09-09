@@ -5,6 +5,43 @@ This document outlines the build system, testing strategy, and installation proc
 - `this` - Command line tool for accessing clipboard history and recent files
 - `clipboard-helper` - Menu bar app for monitoring clipboard changes
 
+## Goal and Usage Patterns
+
+The `this` command provides context to command line tools by intelligently returning either clipboard content or recent file paths. It works with the `clipboard-helper` menu bar app to access clipboard history.
+
+### Core Usage Patterns
+```bash
+this | grep foo          # Pipes clipboard content to grep
+this > filename          # Saves clipboard content to file
+open `this`              # Opens the most relevant file/content
+cp `this` here           # Copies the context file here
+```
+
+### Filtering
+```bash
+this image               # Filters to most recent image (clipboard or file)
+this png                 # Filters to PNG files specifically
+this txt                 # Filters to text files or clipboard text
+this recent image        # Most recent image file (not clipboard)
+```
+
+### Intelligence
+- **Pipe/Redirect Detection**: When piped (`|`) or redirected (`>`), outputs content directly
+- **Interactive Mode**: When used in backticks or interactively, outputs file paths when appropriate
+- **Content vs File Path**: Automatically decides whether to return content or file path based on context
+
+### Data Sources
+1. **Clipboard History**: From `clipboard-helper` app's stored history
+2. **Recent Files**: Using `mdfind` to search configured directories:
+   ```bash
+   mdfind -onlyin ~/Documents -onlyin ~/Desktop "kMDItemLastUsedDate >= $time.today(-3)"
+   ```
+
+### Configuration
+- `~/.this.config` - JSON file specifying search directories and preferences
+- Default searches: `~/Documents`, `~/Desktop`, `~/Downloads`
+- Default time window: 3 days
+
 ## 1. Build System
 
 ### Components

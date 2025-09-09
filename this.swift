@@ -2,15 +2,7 @@
 
 import Foundation
 
-var standardError = FileHandle.standardError
-
-extension FileHandle: TextOutputStream {
-    public func write(_ string: String) {
-        let data = Data(string.utf8)
-        self.write(data)
-    }
-}
-
+// MARK: - Data Models
 struct ClipboardEntry: Codable {
     let timestamp: Date
     let content: String
@@ -18,9 +10,7 @@ struct ClipboardEntry: Codable {
     let tempFilePath: String?
     
     enum ClipboardType: String, Codable {
-        case text
-        case image
-        case file
+        case text, image, file
     }
 }
 
@@ -34,15 +24,17 @@ struct Config: Codable {
     )
 }
 
+// MARK: - Main Tool
 class ThisTool {
     private let dataDirectory: URL
     private let config: Config
+    private let isOutputRedirected: Bool
     
     init() {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         dataDirectory = homeDir.appendingPathComponent(".this")
         
-        // Load config or use default
+        // Load config
         let configPath = homeDir.appendingPathComponent(".this.config")
         if let configData = try? Data(contentsOf: configPath),
            let loadedConfig = try? JSONDecoder().decode(Config.self, from: configData) {
@@ -50,90 +42,78 @@ class ThisTool {
         } else {
             config = Config.default
         }
+        
+        // Detect if output is redirected/piped
+        isOutputRedirected = isatty(STDOUT_FILENO) == 0
     }
     
     func run() {
         let args = Array(CommandLine.arguments.dropFirst())
         
-        // Detect if stdout is a pipe or redirected
-        let isOutputRedirected = isatty(STDOUT_FILENO) == 0
-        
-        if args.isEmpty {
-            handleDefault(outputRedirected: isOutputRedirected)
-        } else if args[0] == "recent" {
-            handleRecent(args: Array(args.dropFirst()), outputRedirected: isOutputRedirected)
-        } else {
-            handleFiltered(args: args, outputRedirected: isOutputRedirected)
-        }
-    }
-    
-    private func handleDefault(outputRedirected: Bool) {
-        if let entry = getMostRecentClipboardEntry() {
-            outputEntry(entry, outputRedirected: outputRedirected)
-        } else {
-            fputs("No clipboard history found\n", stderr)
-            exit(1)
-        }
-    }
-    
-    private func handleRecent(args: [String], outputRedirected: Bool) {
-        let recentFiles = getRecentFiles(filter: args.joined(separator: " "))
-        
-        if !recentFiles.isEmpty {
-            let mostRecent = recentFiles[0]
-            if outputRedirected {
-                print(mostRecent)
+        do {
+            if args.isEmpty {
+                try handleDefault()
+            } else if args[0] == "recent" {
+                try handleRecent(filters: Array(args.dropFirst()))
             } else {
-                print(mostRecent)
+                try handleFiltered(filters: args)
             }
-        } else if let entry = getMostRecentClipboardEntry() {
-            outputEntry(entry, outputRedirected: outputRedirected)
-        } else {
-            fputs("No recent files or clipboard history found\n", stderr)
+        } catch {
+            fputs("Error: \(error.localizedDescription)\n", stderr)
             exit(1)
         }
     }
     
-    private func handleFiltered(args: [String], outputRedirected: Bool) {
-        let filterText = args.joined(separator: " ").lowercased()
-        
-        // Check if this is a recent filter
-        if filterText.hasPrefix("recent ") {
-            let actualFilter = String(filterText.dropFirst(7))
-            let recentFiles = getRecentFiles(filter: actualFilter)
-            
-            if !recentFiles.isEmpty {
-                let mostRecent = recentFiles[0]
-                if outputRedirected {
-                    print(mostRecent)
-                } else {
-                    print(mostRecent)
-                }
-                return
-            }
-        }
-        
-        // Filter clipboard entries
-        if let entry = getMostRecentClipboardEntry(matching: filterText) {
-            outputEntry(entry, outputRedirected: outputRedirected)
+    // MARK: - Command Handlers
+    private func handleDefault() throws {
+        // Try clipboard first, then recent files
+        if let entry = getClipboardEntry() {
+            output(entry)
+        } else if let recentFile = getRecentFiles().first {
+            print(recentFile)
         } else {
-            fputs("No matching clipboard entry found for filter: \(filterText)\n", stderr)
-            exit(1)
+            throw ThisError.noContentFound
         }
     }
     
-    private func outputEntry(_ entry: ClipboardEntry, outputRedirected: Bool) {
-        if outputRedirected || entry.type == .text {
-            // Output content directly for pipes/redirects or text
-            if entry.type == .text {
+    private func handleRecent(filters: [String]) throws {
+        let filter = filters.joined(separator: " ")
+        let recentFiles = getRecentFiles(filter: filter)
+        
+        guard let mostRecent = recentFiles.first else {
+            throw ThisError.noRecentFiles
+        }
+        
+        print(mostRecent)
+    }
+    
+    private func handleFiltered(filters: [String]) throws {
+        let filter = filters.joined(separator: " ").lowercased()
+        
+        // Try clipboard with filter first
+        if let entry = getClipboardEntry(matching: filter) {
+            output(entry)
+        } else {
+            // Try recent files with filter
+            let recentFiles = getRecentFiles(filter: filter)
+            guard let mostRecent = recentFiles.first else {
+                throw ThisError.noMatchingContent(filter)
+            }
+            print(mostRecent)
+        }
+    }
+    
+    // MARK: - Output Logic
+    private func output(_ entry: ClipboardEntry) {
+        switch entry.type {
+        case .text:
+            if isOutputRedirected {
                 print(entry.content)
-            } else if let tempPath = entry.tempFilePath {
-                print(tempPath)
             } else {
+                // For interactive use, still output content for text
                 print(entry.content)
             }
-        } else {
-            // Output file path for interactive use with non-text
+        case .image, .file:
             if let tempPath = entry.tempFilePath {
                 print(tempPath)
             } else {
@@ -142,53 +122,109 @@ class ThisTool {
         }
     }
     
-    private func getMostRecentClipboardEntry(matching filter: String? = nil) -> ClipboardEntry? {
+    // MARK: - Data Access
+    private func getClipboardEntry(matching filter: String? = nil) -> ClipboardEntry? {
         let historyFile = dataDirectory.appendingPathComponent("history.json")
         
-        // Debug: Check if file exists
-        if !FileManager.default.fileExists(atPath: historyFile.path) {
-            print("Debug: History file does not exist at: \(historyFile.path)", to: &standardError)
+        guard let data = try? Data(contentsOf: historyFile),
+              let history = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else {
             return nil
         }
-        
-        guard let data = try? Data(contentsOf: historyFile) else {
-            print("Debug: Could not read history file at: \(historyFile.path)", to: &standardError)
-            return nil
-        }
-        
-        guard let history = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else {
-            print("Debug: Could not decode JSON from history file", to: &standardError)
-            print("Debug: File contents: \(String(data: data, encoding: .utf8) ?? "invalid UTF-8")", to: &standardError)
-            return nil
-        }
-        
-        print("Debug: Successfully loaded \(history.count) entries from history", to: &standardError)
         
         if let filter = filter {
-            let filtered = history.first { entry in
-                matchesFilter(entry: entry, filter: filter)
-            }
-            print("Debug: Filter '\(filter)' matched: \(filtered?.content ?? "none")", to: &standardError)
-            return filtered
+            return history.first { matchesFilter(entry: $0, filter: filter) }
         }
         
-        print("Debug: Returning most recent entry: \(history.first?.content ?? "none")", to: &standardError)
         return history.first
     }
     
+    private func getRecentFiles(filter: String = "") -> [String] {
+        let filter = filter.lowercased()
+        var results: [String] = []
+        
+        // Build mdfind query
+        let daysAgo = config.maxRecentDays
+        let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: dateThreshold)
+        
+        var query = "kMDItemFSContentChangeDate >= '\(dateString)'"
+        
+        // Add file type filters
+        if filter.contains("png") {
+            query += " && kMDItemDisplayName == '*.png'c"
+        } else if filter.contains("jpg") || filter.contains("jpeg") {
+            query += " && (kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c)"
+        } else if filter.contains("txt") || filter.contains("text") {
+            query += " && kMDItemDisplayName == '*.txt'c"
+        } else if filter.contains("pdf") {
+            query += " && kMDItemDisplayName == '*.pdf'c"
+        } else if filter.contains("image") || filter.contains("img") {
+            query += " && (kMDItemDisplayName == '*.png'c || kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c || kMDItemDisplayName == '*.gif'c)"
+        }
+        
+        // Search each directory
+        for searchDir in config.searchDirectories {
+            let expandedDir = NSString(string: searchDir).expandingTildeInPath
+            
+            guard FileManager.default.fileExists(atPath: expandedDir) else { continue }
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+            process.arguments = ["-onlyin", expandedDir, query]
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+            
+            do {
+                try process.run()
+                process.waitUntilExit()
+                
+                if process.terminationStatus == 0 {
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let output = String(data: data, encoding: .utf8) {
+                        let files = output.components(separatedBy: .newlines)
+                            .filter { !$0.isEmpty }
+                            .filter { path in
+                                // Additional content filtering
+                                if !filter.isEmpty && !isFileTypeFilter(filter) {
+                                    return path.lowercased().contains(filter)
+                                }
+                                return true
+                            }
+                        results.append(contentsOf: files)
+                    }
+                }
+            } catch {
+                // Continue on error
+            }
+        }
+        
+        // Sort by modification time (most recent first)
+        return results.sorted { path1, path2 in
+            let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
+            let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
+            
+            let date1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
+            let date2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
+            
+            return date1 > date2
+        }
+    }
+    
+    // MARK: - Helper Functions
     private func matchesFilter(entry: ClipboardEntry, filter: String) -> Bool {
         let filter = filter.lowercased()
         
         // Type-based filtering
-        if filter.contains("image") || filter.contains("img") || filter.contains("png") || 
-           filter.contains("jpg") || filter.contains("jpeg") || filter.contains("gif") {
+        if filter.contains("image") || filter.contains("img") {
             return entry.type == .image
         }
-        
         if filter.contains("text") || filter.contains("txt") {
             return entry.type == .text
         }
-        
         if filter.contains("file") {
             return entry.type == .file
         }
@@ -205,92 +241,30 @@ class ThisTool {
         return entry.content.lowercased().contains(filter)
     }
     
-    private func getRecentFiles(filter: String = "") -> [String] {
-        let filter = filter.lowercased()
-        var results: [String] = []
-        
-        // Calculate date threshold (use modification date since it's more reliable)
-        let daysAgo = config.maxRecentDays
-        let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
-        let timestamp = dateThreshold.timeIntervalSince1970
-        
-        // Build simpler mdfind query using modification date
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let dateString = formatter.string(from: dateThreshold)
-        var query = "kMDItemFSContentChangeDate >= '\(dateString)'"
-        
-        // Add file type filters
-        if filter.contains("png") {
-            query += " && kMDItemDisplayName == '*.png'c"
-        } else if filter.contains("jpg") || filter.contains("jpeg") {
-            query += " && (kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c)"
-        } else if filter.contains("txt") || filter.contains("text") {
-            query += " && kMDItemDisplayName == '*.txt'c"
-        } else if filter.contains("pdf") {
-            query += " && kMDItemDisplayName == '*.pdf'c"
-        } else if filter.contains("image") || filter.contains("img") {
-            query += " && (kMDItemDisplayName == '*.png'c || kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c || kMDItemDisplayName == '*.gif'c)"
-        }
-        
-        // Search in configured directories
-        for searchDir in config.searchDirectories {
-            let expandedDir = NSString(string: searchDir).expandingTildeInPath
-            
-            // Skip if directory doesn't exist
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: expandedDir, isDirectory: &isDir) && isDir.boolValue else {
-                continue
-            }
-            
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-            process.arguments = ["-onlyin", expandedDir, query]
-            
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe() // Suppress errors
-            
-            do {
-                try process.run()
-                process.waitUntilExit()
-                
-                if process.terminationStatus == 0 {
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    if let output = String(data: data, encoding: .utf8) {
-                        let files = output.components(separatedBy: .newlines)
-                            .filter { !$0.isEmpty }
-                            .filter { path in
-                                // Additional content filtering if needed
-                                if !filter.isEmpty && !filter.contains("png") && !filter.contains("jpg") && 
-                                   !filter.contains("jpeg") && !filter.contains("txt") && !filter.contains("text") &&
-                                   !filter.contains("pdf") && !filter.contains("image") && !filter.contains("img") {
-                                    return path.lowercased().contains(filter)
-                                }
-                                return true
-                            }
-                        results.append(contentsOf: files)
-                    }
-                }
-            } catch {
-                // Continue if mdfind fails for this directory
-                print("Warning: mdfind failed for \(expandedDir): \(error)", to: &standardError)
-            }
-        }
-        
-        // Sort by modification time (most recent first)
-        return results.sorted { path1, path2 in
-            let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
-            let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
-            
-            let date1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
-            let date2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
-            
-            return date1 > date2
+    private func isFileTypeFilter(_ filter: String) -> Bool {
+        let fileTypes = ["png", "jpg", "jpeg", "txt", "text", "pdf", "image", "img"]
+        return fileTypes.contains { filter.contains($0) }
+    }
+}
+
+// MARK: - Error Types
+enum ThisError: Error, LocalizedError {
+    case noContentFound
+    case noRecentFiles
+    case noMatchingContent(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .noContentFound:
+            return "No clipboard history or recent files found"
+        case .noRecentFiles:
+            return "No recent files found"
+        case .noMatchingContent(let filter):
+            return "No content found matching filter: \(filter)"
         }
     }
 }
 
-// Main execution
+// MARK: - Main Execution
 let tool = ThisTool()
 tool.run()
