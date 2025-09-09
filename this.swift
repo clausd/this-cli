@@ -2,6 +2,15 @@
 
 import Foundation
 
+var standardError = FileHandle.standardError
+
+extension FileHandle: TextOutputStream {
+    public func write(_ string: String) {
+        let data = Data(string.utf8)
+        self.write(data)
+    }
+}
+
 struct ClipboardEntry: Codable {
     let timestamp: Date
     let content: String
@@ -33,28 +42,29 @@ class ThisTool {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         dataDirectory = homeDir.appendingPathComponent(".this")
         
-        // Create data directory if it doesn't exist
+        // Always create data directory first
         do {
-            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            // Continue even if directory creation fails
+            // Print error but continue
+            print("Warning: Could not create data directory: \(error)", to: &standardError)
         }
         
-        // Load config
+        // Load or create config
         let configPath = homeDir.appendingPathComponent(".this.config")
         if let configData = try? Data(contentsOf: configPath),
            let loadedConfig = try? JSONDecoder().decode(Config.self, from: configData) {
             config = loadedConfig
         } else {
             config = Config.default
-            // Always try to save default config
+            // Always save default config
             do {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = .prettyPrinted
                 let configData = try encoder.encode(config)
-                try configData.write(to: configPath)
+                try configData.write(to: configPath, options: .atomic)
             } catch {
-                // Continue even if config save fails
+                print("Warning: Could not save config file: \(error)", to: &standardError)
             }
         }
     }
@@ -199,32 +209,37 @@ class ThisTool {
         let filter = filter.lowercased()
         var results: [String] = []
         
-        // Calculate date threshold
+        // Calculate date threshold (use modification date since it's more reliable)
         let daysAgo = config.maxRecentDays
         let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
         let timestamp = dateThreshold.timeIntervalSince1970
         
-        // Build mdfind query
-        var query = "kMDItemLastUsedDate >= \(timestamp)"
+        // Build simpler mdfind query using modification date
+        var query = "kMDItemFSContentChangeDate >= \$time.iso(\(dateThreshold.ISO8601Format()))"
         
         // Add file type filters
-        if filter.contains("image") || filter.contains("img") {
-            query += " && (kMDItemContentType == 'public.image' || kMDItemKind == '*image*')"
-        } else if filter.contains("png") {
+        if filter.contains("png") {
             query += " && kMDItemDisplayName == '*.png'"
         } else if filter.contains("jpg") || filter.contains("jpeg") {
             query += " && (kMDItemDisplayName == '*.jpg' || kMDItemDisplayName == '*.jpeg')"
-        } else if filter.contains("gif") {
-            query += " && kMDItemDisplayName == '*.gif'"
         } else if filter.contains("txt") || filter.contains("text") {
-            query += " && (kMDItemContentType == 'public.text' || kMDItemDisplayName == '*.txt')"
+            query += " && kMDItemDisplayName == '*.txt'"
         } else if filter.contains("pdf") {
             query += " && kMDItemDisplayName == '*.pdf'"
+        } else if filter.contains("image") || filter.contains("img") {
+            query += " && (kMDItemDisplayName == '*.png' || kMDItemDisplayName == '*.jpg' || kMDItemDisplayName == '*.jpeg' || kMDItemDisplayName == '*.gif')"
         }
         
         // Search in configured directories
         for searchDir in config.searchDirectories {
             let expandedDir = NSString(string: searchDir).expandingTildeInPath
+            
+            // Skip if directory doesn't exist
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: expandedDir, isDirectory: &isDir) && isDir.boolValue else {
+                continue
+            }
+            
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
             process.arguments = ["-onlyin", expandedDir, query]
@@ -237,44 +252,36 @@ class ThisTool {
                 try process.run()
                 process.waitUntilExit()
                 
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8) {
-                    let files = output.components(separatedBy: .newlines)
-                        .filter { !$0.isEmpty }
-                        .filter { path in
-                            // Additional filtering if needed
-                            if !filter.isEmpty && !filter.contains("image") && !filter.contains("img") && 
-                               !filter.contains("png") && !filter.contains("jpg") && !filter.contains("jpeg") &&
-                               !filter.contains("gif") && !filter.contains("pdf") && !filter.contains("txt") && !filter.contains("text") &&
-                               !filter.contains("dir") && !filter.contains("directory") && !filter.contains("folder") {
-                                return path.lowercased().contains(filter)
+                if process.terminationStatus == 0 {
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let output = String(data: data, encoding: .utf8) {
+                        let files = output.components(separatedBy: .newlines)
+                            .filter { !$0.isEmpty }
+                            .filter { path in
+                                // Additional content filtering if needed
+                                if !filter.isEmpty && !filter.contains("png") && !filter.contains("jpg") && 
+                                   !filter.contains("jpeg") && !filter.contains("txt") && !filter.contains("text") &&
+                                   !filter.contains("pdf") && !filter.contains("image") && !filter.contains("img") {
+                                    return path.lowercased().contains(filter)
+                                }
+                                return true
                             }
-                            
-                            // For directory filter, double-check it's actually a directory
-                            if filter.contains("dir") || filter.contains("directory") || filter.contains("folder") {
-                                var isDir: ObjCBool = false
-                                return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
-                            }
-                            
-                            return true
-                        }
-                    results.append(contentsOf: files)
+                        results.append(contentsOf: files)
+                    }
                 }
             } catch {
-                // Silently continue if mdfind fails for this directory
+                // Continue if mdfind fails for this directory
+                print("Warning: mdfind failed for \(expandedDir): \(error)", to: &standardError)
             }
         }
         
-        // Sort by last used time (most recent first)
+        // Sort by modification time (most recent first)
         return results.sorted { path1, path2 in
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
             let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
             
-            // Use last used date if available, otherwise modification date
-            let date1 = (attr1?[.creationDate] as? Date) ?? 
-                       (attr1?[.modificationDate] as? Date) ?? Date.distantPast
-            let date2 = (attr2?[.creationDate] as? Date) ?? 
-                       (attr2?[.modificationDate] as? Date) ?? Date.distantPast
+            let date1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
+            let date2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
             
             return date1 > date2
         }
