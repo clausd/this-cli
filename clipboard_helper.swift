@@ -93,7 +93,7 @@ class ClipboardMonitor {
         var entry: ClipboardEntry?
         
         // Check for image first
-        if let imageData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .jpeg) ?? pasteboard.data(forType: .tiff) {
+        if let imageData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
             let tempPath = saveTempFile(data: imageData, prefix: "image", extension: getImageExtension(for: imageData))
             entry = ClipboardEntry(
                 timestamp: timestamp,
