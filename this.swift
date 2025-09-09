@@ -355,13 +355,12 @@ For detailed documentation: man this
                 while let file = enumerator.nextObject() as? String {
                     let fullPath = "\(expandedDir)/\(file)"
                     
-                    // Check if file matches our criteria - check both access and modification dates
+                    // Check if file matches our criteria - check modification date
                     if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath) {
-                        let accessDate = attributes[.accessDate] as? Date
                         let modDate = attributes[.modificationDate] as? Date ?? Date.distantPast
                         
-                        // File is recent if either accessed or modified within threshold
-                        let isRecent = (accessDate != nil && accessDate! >= dateThreshold) || modDate >= dateThreshold
+                        // File is recent if modified within threshold
+                        let isRecent = modDate >= dateThreshold
                         
                         if isRecent && matchesFileFilter(path: fullPath, filter: filter) {
                             results.append(fullPath)
@@ -371,19 +370,13 @@ For detailed documentation: man this
             }
         }
         
-        // Sort by access time first, then modification time (most recent first)
+        // Sort by modification time (most recent first)
         return results.sorted { path1, path2 in
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
             let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
             
-            // Try access date first, fall back to modification date
-            let access1 = attr1?[.accessDate] as? Date
-            let access2 = attr2?[.accessDate] as? Date
-            let mod1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
-            let mod2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
-            
-            let date1 = access1 ?? mod1
-            let date2 = access2 ?? mod2
+            let date1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
+            let date2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
             
             return date1 > date2
         }
