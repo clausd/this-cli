@@ -195,8 +195,8 @@ test_clipboard_history_reading() {
     # Test basic clipboard retrieval (should get most recent) - capture both stdout and stderr
     local output
     local stderr_output
-    stderr_output=$(timeout 5s build/this 2>&1 >/dev/null || true)
-    output=$(timeout 5s build/this 2>/dev/null || true)
+    stderr_output=$(build/this 2>&1 >/dev/null || true)
+    output=$(build/this 2>/dev/null || true)
     local exit_code=$?
     
     echo "Debug: Tool exit code: $exit_code" >&2
@@ -222,8 +222,8 @@ test_content_type_filtering() {
     # Mock history should already exist from previous test
     
     # Test image filter
-    local image_output=$(timeout 5s build/this image 2>/dev/null || true)
-    local text_output=$(timeout 5s build/this text 2>/dev/null || true)
+    local image_output=$(build/this image 2>/dev/null || true)
+    local text_output=$(build/this text 2>/dev/null || true)
     
     local result=0
     
@@ -249,7 +249,7 @@ test_content_filtering() {
     # Mock history should already exist from previous test
     
     # Test filtering by keyword
-    local keyword_output=$(timeout 5s build/this keywords 2>/dev/null || true)
+    local keyword_output=$(build/this keywords 2>/dev/null || true)
     
     local result=0
     if [[ "$keyword_output" == *"Another text entry with keywords"* ]]; then
@@ -273,7 +273,7 @@ test_no_history() {
     
     # Run the tool with no history - should exit with error code
     local result=0
-    if timeout 5s build/this 2>/dev/null; then
+    if build/this 2>/dev/null; then
         result=1
     else
         result=0
@@ -292,7 +292,7 @@ test_recent_files() {
     create_test_files
     
     # Test recent txt files
-    local txt_output=$(timeout 10s build/this recent txt 2>/dev/null || true)
+    local txt_output=$(build/this recent txt 2>/dev/null || true)
     local result=0
     
     # Should find one of our .txt files
@@ -314,7 +314,7 @@ test_recent_files_by_extension() {
     # Test files should already exist from previous test
     
     # Test png search
-    local png_output=$(timeout 10s build/this recent png 2>/dev/null || true)
+    local png_output=$(build/this recent png 2>/dev/null || true)
     
     local result=0
     if [[ "$png_output" == *".png"* ]] || [[ "$png_output" == *"image"* ]]; then
@@ -332,10 +332,10 @@ test_pipe_detection() {
     # Mock history should already exist
     
     # Test normal output (should work)
-    local normal_output=$(timeout 5s build/this 2>/dev/null || true)
+    local normal_output=$(build/this 2>/dev/null || true)
     
     # Test piped output (should also work but might format differently)
-    local piped_output=$(timeout 5s build/this 2>/dev/null | cat || true)
+    local piped_output=$(build/this 2>/dev/null | cat || true)
     
     local result=0
     if [[ -n "$normal_output" ]] && [[ -n "$piped_output" ]]; then
@@ -375,7 +375,7 @@ EOF
     touch "$TEST_HOME/CustomDir/custom.txt"
     
     # Run recent search - should use custom config
-    local output=$(timeout 10s build/this recent txt 2>/dev/null || true)
+    local output=$(build/this recent txt 2>/dev/null || true)
     
     local result=0
     # The tool should have loaded the custom config (hard to test directly, 

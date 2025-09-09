@@ -126,8 +126,14 @@ class ThisTool {
     private func getClipboardEntry(matching filter: String? = nil) -> ClipboardEntry? {
         let historyFile = dataDirectory.appendingPathComponent("history.json")
         
-        guard let data = try? Data(contentsOf: historyFile),
-              let history = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else {
+        guard let data = try? Data(contentsOf: historyFile) else {
+            return nil
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        guard let history = try? decoder.decode([ClipboardEntry].self, from: data) else {
             return nil
         }
         
@@ -140,6 +146,20 @@ class ThisTool {
     
     private func getRecentFiles(filter: String = "") -> [String] {
         let filter = filter.lowercased()
+        var results: [String] = []
+        
+        // Try mdfind first, then fallback to manual search
+        results = searchWithMdfind(filter: filter)
+        
+        // If mdfind didn't work (common in test environments), use manual search
+        if results.isEmpty {
+            results = searchManually(filter: filter)
+        }
+        
+        return results
+    }
+    
+    private func searchWithMdfind(filter: String) -> [String] {
         var results: [String] = []
         
         // Build mdfind query
@@ -202,6 +222,38 @@ class ThisTool {
             }
         }
         
+        return results
+    }
+    
+    private func searchManually(filter: String) -> [String] {
+        var results: [String] = []
+        let daysAgo = config.maxRecentDays
+        let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        
+        // Search each directory manually
+        for searchDir in config.searchDirectories {
+            let expandedDir = NSString(string: searchDir).expandingTildeInPath
+            
+            guard FileManager.default.fileExists(atPath: expandedDir) else { continue }
+            
+            if let enumerator = FileManager.default.enumerator(atPath: expandedDir) {
+                while let file = enumerator.nextObject() as? String {
+                    let fullPath = "\(expandedDir)/\(file)"
+                    
+                    // Check if file matches our criteria
+                    if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath),
+                       let modDate = attributes[.modificationDate] as? Date,
+                       modDate >= dateThreshold {
+                        
+                        // Apply filters
+                        if matchesFileFilter(path: fullPath, filter: filter) {
+                            results.append(fullPath)
+                        }
+                    }
+                }
+            }
+        }
+        
         // Sort by modification time (most recent first)
         return results.sorted { path1, path2 in
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
@@ -212,6 +264,32 @@ class ThisTool {
             
             return date1 > date2
         }
+    }
+    
+    private func matchesFileFilter(path: String, filter: String) -> Bool {
+        let pathLower = path.lowercased()
+        let filter = filter.lowercased()
+        
+        if filter.isEmpty { return true }
+        
+        // Extension-based filtering
+        if filter.contains("png") && pathLower.hasSuffix(".png") { return true }
+        if filter.contains("jpg") && (pathLower.hasSuffix(".jpg") || pathLower.hasSuffix(".jpeg")) { return true }
+        if filter.contains("jpeg") && pathLower.hasSuffix(".jpeg") { return true }
+        if filter.contains("txt") && pathLower.hasSuffix(".txt") { return true }
+        if filter.contains("text") && pathLower.hasSuffix(".txt") { return true }
+        if filter.contains("pdf") && pathLower.hasSuffix(".pdf") { return true }
+        if filter.contains("image") || filter.contains("img") {
+            return pathLower.hasSuffix(".png") || pathLower.hasSuffix(".jpg") || 
+                   pathLower.hasSuffix(".jpeg") || pathLower.hasSuffix(".gif")
+        }
+        
+        // Content-based filtering (filename contains filter)
+        if !isFileTypeFilter(filter) {
+            return pathLower.contains(filter)
+        }
+        
+        return false
     }
     
     // MARK: - Helper Functions
