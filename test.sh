@@ -148,7 +148,7 @@ test_binaries_exist() {
 # Test basic help output
 test_help_output() {
     # Test that the binary runs without crashing
-    timeout 5s build/this --help 2>/dev/null || true
+    build/this --help 2>/dev/null || true
     return 0  # Always pass for now since help isn't implemented
 }
 
