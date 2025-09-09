@@ -56,6 +56,9 @@ class ThisTool {
             } else if args[0] == "--help" || args[0] == "-h" {
                 showHelp()
                 exit(0)
+            } else if args[0] == "status" {
+                showStatus()
+                exit(0)
             } else if args[0] == "recent" {
                 try handleRecent(filters: Array(args.dropFirst()))
             } else {
@@ -75,6 +78,7 @@ USAGE:
     this                    Get most recent clipboard content
     this [filter]           Get clipboard content matching filter
     this recent [filter]    Get most recent file matching filter
+    this status             Show clipboard monitor status
 
 EXAMPLES:
     this | grep foo         Pipe clipboard content to grep
@@ -95,8 +99,53 @@ CONFIG:
 """)
     }
     
+    private func showStatus() {
+        print("This Tool Status")
+        print("================")
+        
+        // Check clipboard monitor
+        let monitorRunning = isClipboardMonitorRunning()
+        print("Clipboard Monitor: \(monitorRunning ? "✅ Running" : "❌ Not Running")")
+        
+        // Check data directory
+        let dataExists = FileManager.default.fileExists(atPath: dataDirectory.path)
+        print("Data Directory: \(dataExists ? "✅ Exists" : "❌ Missing") (\(dataDirectory.path))")
+        
+        // Check config file
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let configPath = homeDir.appendingPathComponent(".this.config")
+        let configExists = FileManager.default.fileExists(atPath: configPath.path)
+        print("Config File: \(configExists ? "✅ Exists" : "⚠️  Using defaults") (\(configPath.path))")
+        
+        // Check clipboard history
+        let historyFile = dataDirectory.appendingPathComponent("history.json")
+        if let data = try? Data(contentsOf: historyFile),
+           let history = try? JSONDecoder().decode([ClipboardEntry].self, from: data) {
+            print("Clipboard History: ✅ \(history.count) entries")
+        } else {
+            print("Clipboard History: ⚠️  No history found")
+        }
+        
+        // Show search directories
+        print("\nSearch Directories:")
+        for dir in config.searchDirectories {
+            let expandedDir = NSString(string: dir).expandingTildeInPath
+            let exists = FileManager.default.fileExists(atPath: expandedDir)
+            print("  \(exists ? "✅" : "❌") \(dir) (\(expandedDir))")
+        }
+        
+        if !monitorRunning {
+            print("\n💡 To start clipboard monitoring:")
+            print("   clipboard-helper &")
+            print("   # or install as a service with: make install")
+        }
+    }
+    
     // MARK: - Command Handlers
     private func handleDefault() throws {
+        // Ensure clipboard monitor is running
+        ensureClipboardMonitorRunning()
+        
         // Try clipboard first, then recent files
         if let entry = getClipboardEntry() {
             output(entry)
@@ -120,6 +169,11 @@ CONFIG:
     
     private func handleFiltered(filters: [String]) throws {
         let filter = filters.joined(separator: " ").lowercased()
+        
+        // Ensure clipboard monitor is running for clipboard-related queries
+        if !filter.contains("recent") {
+            ensureClipboardMonitorRunning()
+        }
         
         // Try clipboard with filter first
         if let entry = getClipboardEntry(matching: filter) {
@@ -321,6 +375,88 @@ CONFIG:
         }
         
         return false
+    }
+    
+    // MARK: - Clipboard Monitor Management
+    private func ensureClipboardMonitorRunning() {
+        // Check if clipboard-helper is already running
+        if isClipboardMonitorRunning() {
+            return
+        }
+        
+        // Try to start it
+        startClipboardMonitor()
+        
+        // Give it a moment to start
+        usleep(500_000) // 0.5 seconds
+        
+        // Verify it started
+        if !isClipboardMonitorRunning() {
+            fputs("Warning: Could not start clipboard monitor. Some features may not work.\n", stderr)
+            fputs("Try running: clipboard-helper &\n", stderr)
+        }
+    }
+    
+    private func isClipboardMonitorRunning() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", "clipboard-helper"]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            return process.terminationStatus == 0 && !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } catch {
+            return false
+        }
+    }
+    
+    private func startClipboardMonitor() {
+        // Try to find clipboard-helper in common locations
+        let possiblePaths = [
+            "/usr/local/bin/clipboard-helper",
+            "./build/clipboard-helper",
+            "clipboard-helper" // In PATH
+        ]
+        
+        for path in possiblePaths {
+            if startClipboardMonitorAt(path: path) {
+                return
+            }
+        }
+    }
+    
+    private func startClipboardMonitorAt(path: String) -> Bool {
+        let process = Process()
+        
+        if path.starts(with: "/") || path.starts(with: "./") {
+            // Absolute or relative path
+            guard FileManager.default.fileExists(atPath: path) else { return false }
+            process.executableURL = URL(fileURLWithPath: path)
+        } else {
+            // Command in PATH
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = [path]
+        }
+        
+        // Run in background
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        
+        do {
+            try process.run()
+            return true
+        } catch {
+            return false
+        }
     }
     
     // MARK: - Helper Functions
