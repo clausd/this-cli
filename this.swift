@@ -251,35 +251,15 @@ For detailed documentation: man this
             results = searchManually(filter: filter)
         }
         
-        // Sort results globally by access time (most recent first)
+        // Sort results globally by modification time (most recent first)
         return results.sorted { path1, path2 in
-            // Get real access times using stat
-            var stat1 = stat()
-            var stat2 = stat()
-            
-            let access1 = if stat(path1, &stat1) == 0 {
-                Date(timeIntervalSince1970: TimeInterval(stat1.st_atime))
-            } else {
-                nil
-            }
-            
-            let access2 = if stat(path2, &stat2) == 0 {
-                Date(timeIntervalSince1970: TimeInterval(stat2.st_atime))
-            } else {
-                nil
-            }
-            
-            // Get modification dates as fallback
+            // Get modification dates
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
             let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
             let mod1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
             let mod2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
             
-            // Use access date if available, otherwise fall back to modification date
-            let date1 = access1 ?? mod1
-            let date2 = access2 ?? mod2
-            
-            return date1 > date2
+            return mod1 > mod2
         }
     }
     
@@ -396,16 +376,8 @@ For detailed documentation: man this
                     if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath) {
                         let modDate = attributes[.modificationDate] as? Date ?? Date.distantPast
                         
-                        // Get actual access time using stat
-                        var statBuf = stat()
-                        let accessDate = if stat(fullPath, &statBuf) == 0 {
-                            Date(timeIntervalSince1970: TimeInterval(statBuf.st_atime))
-                        } else {
-                            nil
-                        }
-                        
-                        // File is recent if either accessed or modified within threshold
-                        let isRecent = (accessDate != nil && accessDate! >= dateThreshold) || modDate >= dateThreshold
+                        // File is recent if modified within threshold
+                        let isRecent = modDate >= dateThreshold
                         
                         if isRecent && matchesFileFilter(path: fullPath, filter: filter) {
                             results.append(fullPath)
@@ -415,35 +387,15 @@ For detailed documentation: man this
             }
         }
         
-        // Sort ALL results globally by access time first, then modification time (most recent first)
+        // Sort ALL results globally by modification time (most recent first)
         return results.sorted { path1, path2 in
-            // Get real access times using stat
-            var stat1 = stat()
-            var stat2 = stat()
-            
-            let access1 = if stat(path1, &stat1) == 0 {
-                Date(timeIntervalSince1970: TimeInterval(stat1.st_atime))
-            } else {
-                nil
-            }
-            
-            let access2 = if stat(path2, &stat2) == 0 {
-                Date(timeIntervalSince1970: TimeInterval(stat2.st_atime))
-            } else {
-                nil
-            }
-            
-            // Get modification dates as fallback
+            // Get modification dates
             let attr1 = try? FileManager.default.attributesOfItem(atPath: path1)
             let attr2 = try? FileManager.default.attributesOfItem(atPath: path2)
             let mod1 = attr1?[.modificationDate] as? Date ?? Date.distantPast
             let mod2 = attr2?[.modificationDate] as? Date ?? Date.distantPast
             
-            // Use access date if available, otherwise fall back to modification date
-            let date1 = access1 ?? mod1
-            let date2 = access2 ?? mod2
-            
-            return date1 > date2
+            return mod1 > mod2
         }
     }
     
