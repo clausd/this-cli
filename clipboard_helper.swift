@@ -188,9 +188,11 @@ class ClipboardMonitor {
             history = Array(history.prefix(maxHistoryItems))
         }
         
-        // Save updated history
+        // Save updated history with consistent date format
         do {
-            let data = try JSONEncoder().encode(history)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(history)
             try data.write(to: historyFile)
         } catch {
             print("Error saving history: \(error)")

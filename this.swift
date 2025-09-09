@@ -225,18 +225,41 @@ For detailed documentation: man this
             return nil
         }
         
+        // Try multiple date decoding strategies
         let decoder = JSONDecoder()
+        
+        // First try ISO8601
         decoder.dateDecodingStrategy = .iso8601
-        
-        guard let history = try? decoder.decode([ClipboardEntry].self, from: data) else {
-            return nil
+        if let history = try? decoder.decode([ClipboardEntry].self, from: data) {
+            if let filter = filter {
+                return history.first { matchesFilter(entry: $0, filter: filter) }
+            }
+            return history.first
         }
         
-        if let filter = filter {
-            return history.first { matchesFilter(entry: $0, filter: filter) }
+        // Try default date format
+        decoder.dateDecodingStrategy = .deferredToDate
+        if let history = try? decoder.decode([ClipboardEntry].self, from: data) {
+            if let filter = filter {
+                return history.first { matchesFilter(entry: $0, filter: filter) }
+            }
+            return history.first
         }
         
-        return history.first
+        // Try custom date formatter
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        decoder.dateDecodingStrategy = .formatted(formatter)
+        
+        if let history = try? decoder.decode([ClipboardEntry].self, from: data) {
+            if let filter = filter {
+                return history.first { matchesFilter(entry: $0, filter: filter) }
+            }
+            return history.first
+        }
+        
+        return nil
     }
     
     private func getRecentFiles(filter: String = "") -> [String] {
