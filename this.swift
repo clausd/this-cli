@@ -151,12 +151,13 @@ For detailed documentation: man this
         // Try clipboard first (no monitor checks to avoid hanging)
         if let entry = getClipboardEntry() {
             output(entry)
-        } else if let recentFile = getRecentFiles().first {
-            print(recentFile)
-        } else {
-            fputs("No clipboard history found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
-            throw ThisError.noContentFound
+            return
         }
+        
+        // If no clipboard, just fail fast - don't search files to avoid hanging
+        fputs("No clipboard history found. Start clipboard monitoring with: clipboard-helper &\n", stderr)
+        fputs("Or use 'this recent' to search recent files.\n", stderr)
+        throw ThisError.noContentFound
     }
     
     private func handleRecent(filters: [String]) throws {
@@ -271,7 +272,7 @@ For detailed documentation: man this
             query += " && (kMDItemDisplayName == '*.png'c || kMDItemDisplayName == '*.jpg'c || kMDItemDisplayName == '*.jpeg'c || kMDItemDisplayName == '*.gif'c)"
         }
         
-        // Search each directory
+        // Search each directory with timeout
         for searchDir in config.searchDirectories {
             let expandedDir = NSString(string: searchDir).expandingTildeInPath
             
@@ -287,9 +288,26 @@ For detailed documentation: man this
             
             do {
                 try process.run()
-                process.waitUntilExit()
                 
-                if process.terminationStatus == 0 {
+                // Add timeout to prevent hanging
+                let group = DispatchGroup()
+                group.enter()
+                
+                var processFinished = false
+                DispatchQueue.global().async {
+                    process.waitUntilExit()
+                    processFinished = true
+                    group.leave()
+                }
+                
+                let result = group.wait(timeout: .now() + 2.0) // 2 second timeout
+                
+                if result == .timedOut {
+                    process.terminate()
+                    continue // Skip this directory and continue
+                }
+                
+                if processFinished && process.terminationStatus == 0 {
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     if let output = String(data: data, encoding: .utf8) {
                         let files = output.components(separatedBy: .newlines)
