@@ -51,7 +51,7 @@ class ThisTool {
         let args = Array(CommandLine.arguments.dropFirst())
         
         // Detect if stdout is a pipe or redirected
-        let isOutputRedirected = !isatty(STDOUT_FILENO) != 0
+        let isOutputRedirected = isatty(STDOUT_FILENO) == 0
         
         if args.isEmpty {
             handleDefault(outputRedirected: isOutputRedirected)
