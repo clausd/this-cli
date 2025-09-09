@@ -33,6 +33,36 @@ log_test() {
     echo -e "${BLUE}[TEST]${NC} $1"
 }
 
+# Global test harness variables
+TEST_HOME=""
+ORIGINAL_HOME=""
+
+# Test harness setup and teardown
+setup_test_harness() {
+    log_info "Setting up test harness..."
+    
+    # Create shared temp directory for all tests
+    TEST_HOME=$(mktemp -d)
+    ORIGINAL_HOME="$HOME"
+    export HOME="$TEST_HOME"
+    
+    log_info "Test environment: $TEST_HOME"
+    
+    # Set up trap to cleanup on exit
+    trap cleanup_test_harness EXIT
+}
+
+cleanup_test_harness() {
+    if [[ -n "$ORIGINAL_HOME" ]]; then
+        export HOME="$ORIGINAL_HOME"
+    fi
+    
+    if [[ -n "$TEST_HOME" ]] && [[ -d "$TEST_HOME" ]]; then
+        log_info "Cleaning up test environment: $TEST_HOME"
+        rm -rf "$TEST_HOME"
+    fi
+}
+
 # Test helper functions
 run_test() {
     local test_name="$1"
@@ -51,12 +81,11 @@ run_test() {
     echo
 }
 
-# Helper to create mock clipboard history
+# Helper to create mock clipboard history (uses shared TEST_HOME)
 create_mock_history() {
-    local temp_home="$1"
-    local history_file="$temp_home/.this/history.json"
+    local history_file="$TEST_HOME/.this/history.json"
     
-    mkdir -p "$temp_home/.this"
+    mkdir -p "$TEST_HOME/.this"
     
     # Create sample history with different types
     cat > "$history_file" << 'EOF'
@@ -89,28 +118,26 @@ create_mock_history() {
 EOF
 }
 
-# Helper to create test files for recent search
+# Helper to create test files for recent search (uses shared TEST_HOME)
 create_test_files() {
-    local temp_home="$1"
-    
     # Create Documents directory with test files
-    mkdir -p "$temp_home/Documents"
-    mkdir -p "$temp_home/Desktop"
-    mkdir -p "$temp_home/Downloads"
+    mkdir -p "$TEST_HOME/Documents"
+    mkdir -p "$TEST_HOME/Desktop"
+    mkdir -p "$TEST_HOME/Downloads"
     
     # Create files with different extensions and timestamps
-    echo "Test text content" > "$temp_home/Documents/test.txt"
-    echo "Another document" > "$temp_home/Documents/document.txt"
-    echo "Binary data" > "$temp_home/Documents/image.png"
-    echo "PDF content" > "$temp_home/Desktop/presentation.pdf"
-    echo "Download file" > "$temp_home/Downloads/download.zip"
+    echo "Test text content" > "$TEST_HOME/Documents/test.txt"
+    echo "Another document" > "$TEST_HOME/Documents/document.txt"
+    echo "Binary data" > "$TEST_HOME/Documents/image.png"
+    echo "PDF content" > "$TEST_HOME/Desktop/presentation.pdf"
+    echo "Download file" > "$TEST_HOME/Downloads/download.zip"
     
     # Update timestamps to be recent
-    touch "$temp_home/Documents/test.txt"
-    touch "$temp_home/Documents/document.txt"
-    touch "$temp_home/Documents/image.png"
-    touch "$temp_home/Desktop/presentation.pdf"
-    touch "$temp_home/Downloads/download.zip"
+    touch "$TEST_HOME/Documents/test.txt"
+    touch "$TEST_HOME/Documents/document.txt"
+    touch "$TEST_HOME/Documents/image.png"
+    touch "$TEST_HOME/Desktop/presentation.pdf"
+    touch "$TEST_HOME/Downloads/download.zip"
 }
 
 # Check if binaries exist and are executable
@@ -127,78 +154,55 @@ test_help_output() {
 
 # Test config file creation and content
 test_config_creation() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
     # Run the tool to trigger config creation
     timeout 5s build/this 2>/dev/null || true
     sleep 0.1
     
     local result=0
-    if [[ -f "$temp_home/.this.config" ]]; then
+    if [[ -f "$TEST_HOME/.this.config" ]]; then
         # Verify config contains expected JSON structure
-        if grep -q "searchDirectories" "$temp_home/.this.config" && \
-           grep -q "maxRecentDays" "$temp_home/.this.config" && \
-           grep -q "Documents" "$temp_home/.this.config"; then
+        if grep -q "searchDirectories" "$TEST_HOME/.this.config" && \
+           grep -q "maxRecentDays" "$TEST_HOME/.this.config" && \
+           grep -q "Documents" "$TEST_HOME/.this.config"; then
             result=0
         else
             echo "Debug: Config file exists but has invalid content:" >&2
-            cat "$temp_home/.this.config" >&2
+            cat "$TEST_HOME/.this.config" >&2
             result=1
         fi
     else
         echo "Debug: Config file not created" >&2
-        ls -la "$temp_home" >&2 || true
+        ls -la "$TEST_HOME" >&2 || true
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test data directory creation
 test_data_directory() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
-    # Run the tool to trigger directory creation
-    timeout 5s build/this 2>/dev/null || true
-    
-    # Give it a moment to complete file operations
-    sleep 0.1
-    
-    # Check if data directory was created
+    # Check if data directory was created (should exist from config creation test)
     local result=0
-    if [[ -d "$temp_home/.this" ]]; then
+    if [[ -d "$TEST_HOME/.this" ]]; then
         result=0
-        echo "Debug: Data directory created successfully" >&2
+        echo "Debug: Data directory exists" >&2
         echo "Debug: Directory contents:" >&2
-        ls -la "$temp_home/.this" >&2 || true
+        ls -la "$TEST_HOME/.this" >&2 || true
     else
         result=1
         # Debug: list what was actually created
-        echo "Debug: Contents of $temp_home:" >&2
-        ls -la "$temp_home" >&2 || true
+        echo "Debug: Contents of $TEST_HOME:" >&2
+        ls -la "$TEST_HOME" >&2 || true
         echo "Debug: Checking for any .this* files/dirs:" >&2
-        find "$temp_home" -name ".this*" -ls >&2 || true
+        find "$TEST_HOME" -name ".this*" -ls >&2 || true
     fi
     
-    # Restore original HOME and cleanup
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test clipboard history reading with mock data
 test_clipboard_history_reading() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
-    create_mock_history "$temp_home"
+    create_mock_history
     
     # Test basic clipboard retrieval (should get most recent)
     local output=$(timeout 5s build/this 2>/dev/null || true)
@@ -211,18 +215,12 @@ test_clipboard_history_reading() {
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test filtering by content type
 test_content_type_filtering() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
-    create_mock_history "$temp_home"
+    # Mock history should already exist from previous test
     
     # Test image filter
     local image_output=$(timeout 5s build/this image 2>/dev/null || true)
@@ -244,18 +242,12 @@ test_content_type_filtering() {
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test content-based filtering
 test_content_filtering() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
-    create_mock_history "$temp_home"
+    # Mock history should already exist from previous test
     
     # Test filtering by keyword
     local keyword_output=$(timeout 5s build/this keywords 2>/dev/null || true)
@@ -268,16 +260,17 @@ test_content_filtering() {
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test that the tool handles no clipboard history gracefully
 test_no_history() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
+    # Temporarily remove history file
+    local history_backup=""
+    if [[ -f "$TEST_HOME/.this/history.json" ]]; then
+        history_backup=$(cat "$TEST_HOME/.this/history.json")
+        rm "$TEST_HOME/.this/history.json"
+    fi
     
     # Run the tool with no history - should exit with error code
     local result=0
@@ -287,46 +280,39 @@ test_no_history() {
         result=0
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
+    # Restore history file if it existed
+    if [[ -n "$history_backup" ]]; then
+        echo "$history_backup" > "$TEST_HOME/.this/history.json"
+    fi
+    
     return $result
 }
 
 # Test recent file search functionality
 test_recent_files() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
-    create_test_files "$temp_home"
+    create_test_files
     
     # Test recent txt files
     local txt_output=$(timeout 10s build/this recent txt 2>/dev/null || true)
     local result=0
     
     # Should find one of our .txt files
-    if [[ "$txt_output" == *".txt"* ]] && [[ "$txt_output" == *"$temp_home"* ]]; then
+    if [[ "$txt_output" == *".txt"* ]] && [[ "$txt_output" == *"$TEST_HOME"* ]]; then
         result=0
     else
         echo "Debug: Recent txt search failed. Got: '$txt_output'" >&2
         # Show what files exist for debugging
         echo "Debug: Available files:" >&2
-        find "$temp_home" -name "*.txt" >&2 || true
+        find "$TEST_HOME" -name "*.txt" >&2 || true
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test recent file search with different extensions
 test_recent_files_by_extension() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
-    create_test_files "$temp_home"
+    # Test files should already exist from previous test
     
     # Test png search
     local png_output=$(timeout 10s build/this recent png 2>/dev/null || true)
@@ -339,18 +325,12 @@ test_recent_files_by_extension() {
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test pipe detection and output behavior
 test_pipe_detection() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
-    
-    create_mock_history "$temp_home"
+    # Mock history should already exist
     
     # Test normal output (should work)
     local normal_output=$(timeout 5s build/this 2>/dev/null || true)
@@ -368,20 +348,19 @@ test_pipe_detection() {
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
     return $result
 }
 
 # Test config parsing with custom values
 test_custom_config() {
-    local temp_home=$(mktemp -d)
-    local old_home="$HOME"
-    export HOME="$temp_home"
+    # Backup existing config
+    local config_backup=""
+    if [[ -f "$TEST_HOME/.this.config" ]]; then
+        config_backup=$(cat "$TEST_HOME/.this.config")
+    fi
     
     # Create custom config
-    mkdir -p "$temp_home"
-    cat > "$temp_home/.this.config" << 'EOF'
+    cat > "$TEST_HOME/.this.config" << 'EOF'
 {
   "searchDirectories": [
     "~/CustomDir",
@@ -392,9 +371,9 @@ test_custom_config() {
 EOF
     
     # Create the custom directory with a test file
-    mkdir -p "$temp_home/CustomDir"
-    echo "custom content" > "$temp_home/CustomDir/custom.txt"
-    touch "$temp_home/CustomDir/custom.txt"
+    mkdir -p "$TEST_HOME/CustomDir"
+    echo "custom content" > "$TEST_HOME/CustomDir/custom.txt"
+    touch "$TEST_HOME/CustomDir/custom.txt"
     
     # Run recent search - should use custom config
     local output=$(timeout 10s build/this recent txt 2>/dev/null || true)
@@ -402,15 +381,18 @@ EOF
     local result=0
     # The tool should have loaded the custom config (hard to test directly, 
     # but it shouldn't crash and should create data directory)
-    if [[ -d "$temp_home/.this" ]]; then
+    if [[ -d "$TEST_HOME/.this" ]]; then
         result=0
     else
         echo "Debug: Custom config test failed - no data directory created" >&2
         result=1
     fi
     
-    export HOME="$old_home"
-    rm -rf "$temp_home"
+    # Restore original config
+    if [[ -n "$config_backup" ]]; then
+        echo "$config_backup" > "$TEST_HOME/.this.config"
+    fi
+    
     return $result
 }
 
@@ -432,28 +414,33 @@ main() {
     log_info "Starting This Tool test suite..."
     echo
     
+    # Set up shared test harness
+    setup_test_harness
+    
     # Basic binary tests
     run_test "Binaries exist and are executable" "test_binaries_exist"
     run_test "Help output doesn't crash" "test_help_output"
     run_test "Swift compilation successful" "test_swift_compilation"
     
-    # Configuration tests
+    # Configuration tests (these set up the shared environment)
     run_test "Config file creation and content" "test_config_creation"
     run_test "Data directory creation" "test_data_directory"
-    run_test "Custom config parsing" "test_custom_config"
     
-    # Core functionality tests
+    # Core functionality tests (these use the shared environment)
     run_test "Clipboard history reading" "test_clipboard_history_reading"
     run_test "Content type filtering" "test_content_type_filtering"
     run_test "Content-based filtering" "test_content_filtering"
     run_test "No history handling" "test_no_history"
     
-    # File search tests
+    # File search tests (these use the shared environment)
     run_test "Recent files search" "test_recent_files"
     run_test "Recent files by extension" "test_recent_files_by_extension"
     
     # Output behavior tests
     run_test "Pipe detection and output" "test_pipe_detection"
+    
+    # Config tests (these temporarily modify the shared environment)
+    run_test "Custom config parsing" "test_custom_config"
     
     # Test summary
     echo "=================================="
