@@ -33,6 +33,9 @@ class ThisTool {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         dataDirectory = homeDir.appendingPathComponent(".this")
         
+        // Create data directory if it doesn't exist
+        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        
         // Load config
         let configPath = homeDir.appendingPathComponent(".this.config")
         if let configData = try? Data(contentsOf: configPath),
@@ -41,8 +44,13 @@ class ThisTool {
         } else {
             config = Config.default
             // Save default config
-            if let configData = try? JSONEncoder().encode(config) {
-                try? configData.write(to: configPath)
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .prettyPrinted
+                let configData = try encoder.encode(config)
+                try configData.write(to: configPath)
+            } catch {
+                // Silently continue if config save fails
             }
         }
     }

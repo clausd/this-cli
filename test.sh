@@ -66,16 +66,25 @@ test_help_output() {
 # Test config file creation
 test_config_creation() {
     local temp_home=$(mktemp -d)
+    local old_home="$HOME"
     export HOME="$temp_home"
     
-    # Run the tool to trigger config creation
+    # Run the tool to trigger config creation (it will fail due to no history, but should create config)
     timeout 5s build/this 2>/dev/null || true
     
     # Check if config was created
-    [[ -f "$temp_home/.this.config" ]]
-    local result=$?
+    local result=0
+    if [[ -f "$temp_home/.this.config" ]]; then
+        result=0
+    else
+        result=1
+        # Debug: list what was actually created
+        echo "Debug: Contents of $temp_home:" >&2
+        ls -la "$temp_home" >&2 || true
+    fi
     
-    # Cleanup
+    # Restore original HOME and cleanup
+    export HOME="$old_home"
     rm -rf "$temp_home"
     return $result
 }
@@ -83,16 +92,25 @@ test_config_creation() {
 # Test data directory creation
 test_data_directory() {
     local temp_home=$(mktemp -d)
+    local old_home="$HOME"
     export HOME="$temp_home"
     
     # Run the tool to trigger directory creation
     timeout 5s build/this 2>/dev/null || true
     
     # Check if data directory was created
-    [[ -d "$temp_home/.this" ]]
-    local result=$?
+    local result=0
+    if [[ -d "$temp_home/.this" ]]; then
+        result=0
+    else
+        result=1
+        # Debug: list what was actually created
+        echo "Debug: Contents of $temp_home:" >&2
+        ls -la "$temp_home" >&2 || true
+    fi
     
-    # Cleanup
+    # Restore original HOME and cleanup
+    export HOME="$old_home"
     rm -rf "$temp_home"
     return $result
 }
@@ -100,23 +118,29 @@ test_data_directory() {
 # Test that the tool handles no clipboard history gracefully
 test_no_history() {
     local temp_home=$(mktemp -d)
+    local old_home="$HOME"
     export HOME="$temp_home"
     
     # Run the tool with no history - should exit with error code
+    local result=0
     if timeout 5s build/this 2>/dev/null; then
         # If it succeeded, that's unexpected
-        rm -rf "$temp_home"
-        return 1
+        result=1
     else
         # Expected to fail with no history
-        rm -rf "$temp_home"
-        return 0
+        result=0
     fi
+    
+    # Restore original HOME and cleanup
+    export HOME="$old_home"
+    rm -rf "$temp_home"
+    return $result
 }
 
 # Test recent file search (basic functionality)
 test_recent_files() {
     local temp_home=$(mktemp -d)
+    local old_home="$HOME"
     export HOME="$temp_home"
     
     # Create some test files in Documents
@@ -128,7 +152,8 @@ test_recent_files() {
     timeout 10s build/this recent txt 2>/dev/null || true
     local result=$?
     
-    # Cleanup
+    # Restore original HOME and cleanup
+    export HOME="$old_home"
     rm -rf "$temp_home"
     
     # Return success if it didn't crash (exit code 124 is timeout)
