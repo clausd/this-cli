@@ -37,6 +37,9 @@ struct Config: Codable {
         searchDirectories: ["~/Documents", "~/Desktop", "~/Downloads"],
         maxRecentDays: 3
     )
+    
+    // 10 minute cutoff for "recent" files
+    var maxRecentMinutes: Int { return 10 }
 }
 
 // MARK: - Main Tool
@@ -324,17 +327,17 @@ For detailed documentation: man this
     private func searchWithMdfind(filter: String) -> [String] {
         var results: [String] = []
         
-        // Build mdfind query - use LastUsedDate for recently accessed files
-        let daysAgo = config.maxRecentDays
-        let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        // Use 10-minute cutoff for truly recent files
+        let minutesAgo = config.maxRecentMinutes
+        let dateThreshold = Calendar.current.date(byAdding: .minute, value: -minutesAgo, to: Date()) ?? Date()
         
-        // Use the format that mdfind expects for date queries
+        // Use precise timestamp format for mdfind
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         let dateString = formatter.string(from: dateThreshold)
         
-        // Query for recently accessed files (LastUsedDate) OR recently modified files (ContentChangeDate)
-        var query = "(kMDItemLastUsedDate >= '\(dateString)' || kMDItemFSContentChangeDate >= '\(dateString)')"
+        // Query for recently modified files only (more reliable than LastUsedDate)
+        var query = "kMDItemFSContentChangeDate >= '\(dateString)'"
         
         // Add file type filters
         if filter.contains("png") {
@@ -387,7 +390,7 @@ For detailed documentation: man this
                 group.leave()
             }
             
-            let result = group.wait(timeout: .now() + 5.0) // 5 second timeout for all dirs
+            let result = group.wait(timeout: .now() + 2.0) // 2 second timeout for all dirs
             
             if result == .timedOut {
                 process.terminate()
@@ -417,8 +420,8 @@ For detailed documentation: man this
     
     private func searchManually(filter: String) -> [String] {
         var results: [String] = []
-        let daysAgo = config.maxRecentDays
-        let dateThreshold = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        let minutesAgo = config.maxRecentMinutes
+        let dateThreshold = Calendar.current.date(byAdding: .minute, value: -minutesAgo, to: Date()) ?? Date()
         
         // Search each directory manually and collect ALL results first
         for searchDir in config.searchDirectories {
@@ -434,7 +437,7 @@ For detailed documentation: man this
                     if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath) {
                         let modDate = attributes[.modificationDate] as? Date ?? Date.distantPast
                         
-                        // File is recent if modified within threshold
+                        // File is recent if modified within 10-minute threshold
                         let isRecent = modDate >= dateThreshold
                         
                         if isRecent && matchesFileFilter(path: fullPath, filter: filter) {
