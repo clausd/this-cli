@@ -76,6 +76,16 @@ class ThisTool {
             } else if args[0] == "-l" || args[0] == "list" {
                 try handleList(filters: Array(args.dropFirst()))
                 exit(0)
+            } else if args[0].hasPrefix("-") && args[0].count >= 2 {
+                // Check for -1 through -10 switches
+                let numberPart = String(args[0].dropFirst())
+                if let index = Int(numberPart), index >= 1 && index <= 10 {
+                    try handleIndexed(index: index, filters: Array(args.dropFirst()))
+                    exit(0)
+                } else {
+                    fputs("Error: Unknown option \(args[0]). Use --help for usage information.\n", stderr)
+                    exit(1)
+                }
             } else if args[0] == "recent" {
                 try handleRecent(filters: Array(args.dropFirst()))
             } else {
@@ -96,6 +106,7 @@ USAGE:
     this [filter]           Get clipboard content matching filter
     this recent [filter]    Get most recent file matching filter
     this -l, list [filter]  List 10 most recent candidates
+    this -N [filter]        Get Nth candidate (N=1-10, e.g., -3)
     this status, -s         Show clipboard monitor status
     this --help, -h         Show this help message
 
@@ -107,6 +118,8 @@ EXAMPLES:
     this recent txt         Get most recent .txt file
     this -l                 List 10 most recent candidates
     this -l image           List 10 most recent images
+    this -3 dir             Get 3rd most recent directory-related file
+    this -1                 Get most recent candidate (same as 'this')
     this -s                 Quick status check
 
 FILTERS:
@@ -224,6 +237,26 @@ For detailed documentation: man this
                 print("\(number). \(path)")
             }
         }
+    }
+    
+    private func handleIndexed(index: Int, filters: [String]) throws {
+        let filter = filters.joined(separator: " ").lowercased()
+        let items = getAllRecentItems(matching: filter.isEmpty ? nil : filter)
+        
+        guard !items.isEmpty else {
+            fputs("No candidates found\(filter.isEmpty ? "" : " matching filter: \(filter)"). Start clipboard monitoring with: clipboard-helper &\n", stderr)
+            throw ThisError.noMatchingContent(filter.isEmpty ? "any" : filter)
+        }
+        
+        // Check if the requested index exists
+        guard index <= items.count else {
+            fputs("Only \(items.count) candidate\(items.count == 1 ? "" : "s") available, cannot get item #\(index)\n", stderr)
+            throw ThisError.indexOutOfRange(index, items.count)
+        }
+        
+        // Get the item at the specified index (1-based)
+        let item = items[index - 1]
+        outputItem(item)
     }
     
     // MARK: - Output Logic
@@ -549,6 +582,7 @@ enum ThisError: Error, LocalizedError {
     case noContentFound
     case noRecentFiles
     case noMatchingContent(String)
+    case indexOutOfRange(Int, Int)
     
     var errorDescription: String? {
         switch self {
@@ -558,6 +592,8 @@ enum ThisError: Error, LocalizedError {
             return "No recent files found"
         case .noMatchingContent(let filter):
             return "No content found matching filter: \(filter)"
+        case .indexOutOfRange(let requested, let available):
+            return "Only \(available) candidate\(available == 1 ? "" : "s") available, cannot get item #\(requested)"
         }
     }
 }
