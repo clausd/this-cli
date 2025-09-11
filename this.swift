@@ -73,6 +73,9 @@ class ThisTool {
             } else if args[0] == "status" || args[0] == "-s" {
                 showStatus()
                 exit(0)
+            } else if args[0] == "-l" || args[0] == "list" {
+                try handleList(filters: Array(args.dropFirst()))
+                exit(0)
             } else if args[0] == "recent" {
                 try handleRecent(filters: Array(args.dropFirst()))
             } else {
@@ -92,6 +95,7 @@ USAGE:
     this                    Get most recent clipboard content
     this [filter]           Get clipboard content matching filter
     this recent [filter]    Get most recent file matching filter
+    this -l, list [filter]  List 10 most recent candidates
     this status, -s         Show clipboard monitor status
     this --help, -h         Show this help message
 
@@ -101,6 +105,8 @@ EXAMPLES:
     cat `this`              View content of most relevant file
     this image              Get most recent image file
     this recent txt         Get most recent .txt file
+    this -l                 List 10 most recent candidates
+    this -l image           List 10 most recent images
     this -s                 Quick status check
 
 FILTERS:
@@ -194,6 +200,32 @@ For detailed documentation: man this
         }
     }
     
+    private func handleList(filters: [String]) throws {
+        let filter = filters.joined(separator: " ").lowercased()
+        let items = getAllRecentItems(matching: filter.isEmpty ? nil : filter)
+        
+        guard !items.isEmpty else {
+            fputs("No candidates found\(filter.isEmpty ? "" : " matching filter: \(filter)"). Start clipboard monitoring with: clipboard-helper &\n", stderr)
+            throw ThisError.noMatchingContent(filter.isEmpty ? "any" : filter)
+        }
+        
+        // Show up to 10 items, numbered
+        let displayItems = Array(items.prefix(10))
+        for (index, item) in displayItems.enumerated() {
+            let number = index + 1
+            switch item {
+            case .clipboardEntry(let entry):
+                if let tempPath = entry.tempFilePath {
+                    print("\(number). \(tempPath)")
+                } else {
+                    print("\(number). \(entry.content)")
+                }
+            case .filePath(let path, _):
+                print("\(number). \(path)")
+            }
+        }
+    }
+    
     // MARK: - Output Logic
     private func output(_ entry: ClipboardEntry) {
         // Always output file path when available
@@ -216,6 +248,10 @@ For detailed documentation: man this
     
     // MARK: - Data Access
     private func getMostRecentItem(matching filter: String? = nil) -> RecentItem? {
+        return getAllRecentItems(matching: filter).first
+    }
+    
+    private func getAllRecentItems(matching filter: String? = nil) -> [RecentItem] {
         var allItems: [RecentItem] = []
         
         // Get clipboard entries
@@ -240,8 +276,8 @@ For detailed documentation: man this
             }
         }
         
-        // Sort by timestamp (most recent first) and return the first
-        return allItems.sorted { $0.timestamp > $1.timestamp }.first
+        // Sort by timestamp (most recent first)
+        return allItems.sorted { $0.timestamp > $1.timestamp }
     }
     
     private func getClipboardEntry(matching filter: String? = nil) -> ClipboardEntry? {
