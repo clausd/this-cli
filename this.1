@@ -15,7 +15,7 @@ this \- context-aware clipboard and file tool
 .B this \-h
 .SH DESCRIPTION
 .B this
-is a context-aware command-line tool that provides intelligent access to clipboard history and recent files. It automatically determines whether to output content directly or file paths based on usage context (pipes, redirects, or interactive use).
+is a context-aware command-line tool that provides intelligent access to clipboard history and recent files. It outputs file paths for seamless integration with other command-line tools.
 
 The tool works in conjunction with the
 .B clipboard-helper
@@ -49,29 +49,15 @@ Filter to specific file extensions
 Filter content containing the specified keyword
 
 .SH USAGE PATTERNS
-.SS Piped Output
-When output is piped or redirected, 
 .B this
-outputs content directly:
+always outputs file paths, making it easy to integrate with other command-line tools:
 .PP
 .nf
 .RS
-this | grep "search term"
-this > output.txt
-echo "prefix: $(this)"
-.RE
-.fi
-
-.SS Interactive Use
-When used interactively or in command substitution, 
-.B this
-intelligently chooses between content and file paths:
-.PP
-.nf
-.RS
-open `this`
-cp `this` backup/
-cat `this image`
+open `this`              # Open most relevant file
+cp `this` backup/        # Copy file to backup directory
+cat `this image`         # View content of most recent image
+grep "term" `this`       # Search within the file
 .RE
 .fi
 
@@ -86,8 +72,8 @@ Get most recent image from clipboard
 .B this recent txt
 Get path to most recent .txt file
 .TP
-.B this | grep foo
-Search clipboard content for "foo"
+.B grep foo `this`
+Search most relevant file for "foo"
 .TP
 .B open `this recent pdf`
 Open most recent PDF file

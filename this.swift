@@ -46,7 +46,6 @@ struct Config: Codable {
 class ThisTool {
     private let dataDirectory: URL
     private let config: Config
-    private let isOutputRedirected: Bool
     
     init() {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
@@ -60,9 +59,6 @@ class ThisTool {
         } else {
             config = Config.default
         }
-        
-        // Detect if output is redirected/piped
-        isOutputRedirected = isatty(STDOUT_FILENO) == 0
     }
     
     func run() {
@@ -100,10 +96,10 @@ USAGE:
     this --help, -h         Show this help message
 
 EXAMPLES:
-    this | grep foo         Pipe clipboard content to grep
-    this > file.txt         Save clipboard content to file
     open `this`             Open most relevant file
-    this image              Get most recent image
+    cp `this` backup/       Copy most relevant file
+    cat `this`              View content of most relevant file
+    this image              Get most recent image file
     this recent txt         Get most recent .txt file
     this -s                 Quick status check
 
@@ -200,20 +196,12 @@ For detailed documentation: man this
     
     // MARK: - Output Logic
     private func output(_ entry: ClipboardEntry) {
-        switch entry.type {
-        case .text:
-            if isOutputRedirected {
-                print(entry.content)
-            } else {
-                // For interactive use, still output content for text
-                print(entry.content)
-            }
-        case .image, .file:
-            if let tempPath = entry.tempFilePath {
-                print(tempPath)
-            } else {
-                print(entry.content)
-            }
+        // Always output file path when available
+        if let tempPath = entry.tempFilePath {
+            print(tempPath)
+        } else {
+            // Fallback to content description for entries without temp files
+            print(entry.content)
         }
     }
     

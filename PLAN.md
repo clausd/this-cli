@@ -11,10 +11,9 @@ The `this` command provides context to command line tools by intelligently retur
 
 ### Core Usage Patterns
 ```bash
-this | grep foo          # Pipes clipboard content to grep
-this > filename          # Saves clipboard content to file
 open `this`              # Opens the most relevant file/content
 cp `this` here           # Copies the context file here
+cat `this`               # View content of the most relevant file
 ```
 
 ### Filtering
@@ -26,9 +25,9 @@ this recent image        # Most recent image file (not clipboard)
 ```
 
 ### Intelligence
-- **Pipe/Redirect Detection**: When piped (`|`) or redirected (`>`), outputs content directly
-- **Interactive Mode**: When used in backticks or interactively, outputs file paths when appropriate
-- **Content vs File Path**: Automatically decides whether to return content or file path based on context
+- **File Path Output**: Always outputs file paths for use with other command-line tools
+- **Smart Filtering**: Intelligently matches clipboard content and recent files
+- **Context Awareness**: Prioritizes most relevant content based on recency and type
 
 ### Data Sources
 1. **Clipboard History**: From `clipboard-helper` app's stored history
@@ -81,7 +80,7 @@ this recent image        # Most recent image file (not clipboard)
 - **End-to-End Workflow**
   - Clipboard monitoring → storage → retrieval
   - Recent file search with various filters
-  - Pipe/redirect detection
+  - File path output verification
 - **File System Operations**
   - Temp file creation and cleanup
   - History file management
@@ -90,7 +89,7 @@ this recent image        # Most recent image file (not clipboard)
 ### Manual Test Scripts
 - **test-clipboard.sh** - Test different clipboard content types
 - **test-filters.sh** - Test all filtering scenarios
-- **test-pipes.sh** - Test pipe and redirect behavior
+- **test-output.sh** - Test file path output behavior
 
 ## 3. Installation System
 
@@ -186,7 +185,7 @@ this recent image        # Most recent image file (not clipboard)
 - [x] Clipboard monitor dependency checking
 - [x] Automatic fallback between mdfind and manual file search
 - [x] ISO8601 date handling for clipboard history
-- [x] Pipe/redirect detection for output formatting
+- [x] Consistent file path output for command-line integration
 
 ### Phase 3: Professional Installation
 - [ ] Enhanced installer with GUI prompts
