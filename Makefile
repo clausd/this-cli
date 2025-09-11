@@ -11,7 +11,7 @@ BUILD_DIR = build
 THIS_BINARY = $(BUILD_DIR)/this
 CLIPBOARD_HELPER_BINARY = $(BUILD_DIR)/clipboard-helper
 
-.PHONY: all clean install uninstall test help man
+.PHONY: all clean install uninstall test help man start-service stop-service restart-service
 
 # Default target
 all: $(THIS_BINARY) $(CLIPBOARD_HELPER_BINARY)
@@ -63,18 +63,34 @@ man: this.1
 	@cp this.1 $(MAN_DIR)/this.1
 	@echo "✅ Man page installed: $(MAN_DIR)/this.1"
 
+# Service management targets
+start-service:
+	@echo "Starting clipboard monitoring service..."
+	@launchctl load ~/Library/LaunchAgents/com.this.clipboard-helper.plist 2>/dev/null || echo "Service may already be running"
+	@echo "✅ Service started"
+
+stop-service:
+	@echo "Stopping clipboard monitoring service..."
+	@launchctl unload ~/Library/LaunchAgents/com.this.clipboard-helper.plist 2>/dev/null || echo "Service may not be running"
+	@echo "✅ Service stopped"
+
+restart-service: stop-service start-service
+
 # Show help
 help:
 	@echo "This Tool - Build System"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  all        - Build both tools (default)"
-	@echo "  clean      - Remove build artifacts"
-	@echo "  install    - Build and install to system"
-	@echo "  uninstall  - Remove from system"
-	@echo "  test       - Run test suite"
-	@echo "  man        - Install man page"
-	@echo "  help       - Show this help"
+	@echo "  all            - Build both tools (default)"
+	@echo "  clean          - Remove build artifacts"
+	@echo "  install        - Build and install to system"
+	@echo "  uninstall      - Remove from system"
+	@echo "  test           - Run test suite"
+	@echo "  man            - Install man page"
+	@echo "  start-service  - Start clipboard monitoring service"
+	@echo "  stop-service   - Stop clipboard monitoring service"
+	@echo "  restart-service- Restart clipboard monitoring service"
+	@echo "  help           - Show this help"
 	@echo ""
 	@echo "Configuration:"
 	@echo "  INSTALL_PREFIX = $(INSTALL_PREFIX)"

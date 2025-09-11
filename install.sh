@@ -175,8 +175,12 @@ load_launch_agent() {
     launchctl unload "$plist_path" 2>/dev/null || true
     
     # Load the launch agent
-    launchctl load "$plist_path"
-    log_info "✅ Clipboard monitoring service started"
+    if launchctl load "$plist_path" 2>/dev/null; then
+        log_info "✅ Clipboard monitoring service started"
+    else
+        log_warn "⚠️  Could not start clipboard monitoring service automatically"
+        log_warn "   You can start it manually with: make start-service"
+    fi
 }
 
 # Verify installation
@@ -224,6 +228,11 @@ show_post_install_info() {
     echo ""
     echo "The clipboard monitoring service is now running in the background."
     echo "You should see a 📋 icon in your menu bar."
+    echo ""
+    echo "Service management:"
+    echo "  make start-service      # Start clipboard monitoring"
+    echo "  make stop-service       # Stop clipboard monitoring"
+    echo "  make restart-service    # Restart clipboard monitoring"
     echo ""
     echo "To uninstall: ./uninstall.sh"
 }

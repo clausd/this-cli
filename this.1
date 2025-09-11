@@ -116,6 +116,20 @@ Main executable
 .TP
 .B /usr/local/bin/clipboard-helper
 Background clipboard monitor
+.TP
+.B ~/Library/LaunchAgents/com.this.clipboard-helper.plist
+Launch agent for automatic clipboard monitoring
+
+.SH SERVICE MANAGEMENT
+The clipboard monitoring service runs automatically after installation. You can manage it using:
+.PP
+.nf
+.RS
+make start-service       # Start clipboard monitoring
+make stop-service        # Stop clipboard monitoring  
+make restart-service     # Restart clipboard monitoring
+.RE
+.fi
 
 .SH ENVIRONMENT
 The tool respects standard environment variables and uses Spotlight (mdfind) for file searching when available.
