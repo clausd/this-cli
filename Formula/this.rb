@@ -5,7 +5,6 @@ class This < Formula
   version "1.0.0"
   head "https://github.com/yourusername/this-tool.git", branch: "main"
 
-  depends_on xcode: ["10.0", :build]
   depends_on :macos
 
   def install
