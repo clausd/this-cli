@@ -2,16 +2,17 @@
 
 # Configuration
 SWIFT_FLAGS = -O
-INSTALL_PREFIX = /usr/local
+INSTALL_PREFIX ?= /usr/local
 BIN_DIR = $(INSTALL_PREFIX)/bin
 MAN_DIR = $(INSTALL_PREFIX)/share/man/man1
 BUILD_DIR = build
+VAR_DIR = $(INSTALL_PREFIX)/var/this
 
 # Targets
 THIS_BINARY = $(BUILD_DIR)/this
 CLIPBOARD_HELPER_BINARY = $(BUILD_DIR)/clipboard-helper
 
-.PHONY: all clean install uninstall test help man start-service stop-service restart-service
+.PHONY: all clean install uninstall test help man start-service stop-service restart-service homebrew-install
 
 # Default target
 all: $(THIS_BINARY) $(CLIPBOARD_HELPER_BINARY)
@@ -43,6 +44,16 @@ install: all
 	@echo "Installing This Tool..."
 	@./install.sh
 	@echo "✅ Installation complete"
+
+# Homebrew-compatible install (used by brew formula)
+homebrew-install: all
+	@echo "Installing This Tool (Homebrew mode)..."
+	@mkdir -p $(BIN_DIR)
+	@mkdir -p $(VAR_DIR)
+	@cp $(BUILD_DIR)/this $(BIN_DIR)/this
+	@cp $(BUILD_DIR)/clipboard-helper $(BIN_DIR)/clipboard-helper
+	@chmod +x $(BIN_DIR)/this $(BIN_DIR)/clipboard-helper
+	@echo "✅ Homebrew installation complete"
 
 # Uninstall from system
 uninstall:
