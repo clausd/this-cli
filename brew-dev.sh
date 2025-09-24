@@ -23,25 +23,25 @@ create_local_tap() {
 class This < Formula
   desc "Context-aware clipboard and file tool"
   homepage "https://github.com/clausd/this-cli"
-  url "https://github.com/clausd/this-cli.git", using: :git, revision: "HEAD"
   version "1.0.0-dev"
 
   depends_on :macos
 
   def install
-    # Change to the source directory
-    cd "$current_dir"
+    # Build directly from the local source directory
+    Dir.chdir("$current_dir") do
     
-    # Build the tools
-    system "make", "all"
-    
-    # Install binaries
-    bin.install "build/this"
-    bin.install "build/clipboard-helper"
-    
-    # Install default config template
-    (etc/"this").mkpath
-    (etc/"this").install ".this.config" => "config.json"
+      # Build the tools
+      system "make", "all"
+      
+      # Install binaries
+      bin.install "build/this"
+      bin.install "build/clipboard-helper"
+      
+      # Install default config template
+      (etc/"this").mkpath
+      (etc/"this").install ".this.config" => "config.json"
+    end
   end
 
   def post_install
