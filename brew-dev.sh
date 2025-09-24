@@ -3,7 +3,7 @@
 
 set -e
 
-TAP_NAME="local/this"
+TAP_NAME="local/this/this"
 FORMULA_PATH="Formula/this.rb"
 
 # Create local tap if it doesn't exist
