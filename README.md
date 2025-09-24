@@ -7,13 +7,13 @@ A macOS command-line tool that provides intelligent access to clipboard history 
 ### Homebrew (Recommended)
 
 ```bash
-# Install from source with automatic service setup
-brew install --build-from-source /path/to/this-tool/Formula/this.rb
+# Install from local development tap
+./brew-dev.sh install
 
 # Start the clipboard monitoring service
-brew services start this
+./brew-dev.sh service-start
 
-# Or install from a tap (if published)
+# Or install from a published tap (when available)
 brew tap yourusername/this-tool
 brew install this
 ```
