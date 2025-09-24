@@ -22,7 +22,8 @@ create_local_tap() {
     cat > "$tap_dir/this.rb" << EOF
 class This < Formula
   desc "Context-aware clipboard and file tool"
-  homepage "https://github.com/yourusername/this-tool"
+  homepage "https://github.com/clausd/this-cli"
+  url "https://github.com/clausd/this-cli.git", using: :git, revision: "HEAD"
   version "1.0.0-dev"
 
   depends_on :macos
@@ -153,7 +154,7 @@ case "${1:-}" in
         ;;
     clean)
         echo "Cleaning up local tap..."
-        local tap_dir="$(brew --repository)/Library/Taps/local/homebrew-this"
+        tap_dir="$(brew --repository)/Library/Taps/local/homebrew-this"
         if [[ -d "$tap_dir" ]]; then
             rm -rf "$tap_dir"
             echo "Removed local tap"
