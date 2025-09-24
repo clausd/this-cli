@@ -18,8 +18,8 @@ create_local_tap() {
     
     echo "Updating local tap with current directory: $current_dir"
     
-    # Create a local development version of the formula that builds from current directory
-    cat > "$tap_dir/this.rb" << EOF
+    # Create a local development version of the formula
+    cat > "$tap_dir/this.rb" << 'EOF'
 class This < Formula
   desc "Context-aware clipboard and file tool"
   homepage "https://github.com/clausd/this-cli"
@@ -28,21 +28,34 @@ class This < Formula
   depends_on :macos
 
   def install
-    # Build directly from the local source directory
-    Dir.chdir("$current_dir") do
+    # This is a local development formula - files are copied from source
+    # The actual build happens outside of Homebrew
     
-      # Build the tools
-      system "make", "all"
-      
-      # Install binaries
-      bin.install "build/this"
-      bin.install "build/clipboard-helper"
-      
-      # Install default config template
-      (etc/"this").mkpath
-      (etc/"this").install ".this.config" => "config.json"
-    end
+    # Just install pre-built binaries
+    bin.install "this"
+    bin.install "clipboard-helper"
+    
+    # Install default config template
+    (etc/"this").mkpath
+    (etc/"this").install ".this.config" => "config.json"
   end
+EOF
+
+    # Copy the pre-built binaries to the tap directory so Homebrew can find them
+    if [[ -f "$current_dir/build/this" ]]; then
+        cp "$current_dir/build/this" "$tap_dir/"
+    else
+        echo "Warning: build/this not found. Run 'make all' first."
+    fi
+    
+    if [[ -f "$current_dir/build/clipboard-helper" ]]; then
+        cp "$current_dir/build/clipboard-helper" "$tap_dir/"
+    else
+        echo "Warning: build/clipboard-helper not found. Run 'make all' first."
+    fi
+    
+    # Copy config file
+    cp "$current_dir/.this.config" "$tap_dir/"
 
   def post_install
     # Create user data directory

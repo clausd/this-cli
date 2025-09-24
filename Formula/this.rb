@@ -1,9 +1,9 @@
 class This < Formula
   desc "Context-aware clipboard and file tool"
-  homepage "https://github.com/yourusername/this-tool"
-  url "https://github.com/yourusername/this-tool.git", using: :git, tag: "v1.0.0"
+  homepage "https://github.com/clausd/this-cli"
+  url "https://github.com/clausd/this-cli.git", using: :git, tag: "v1.0.0"
   version "1.0.0"
-  head "https://github.com/yourusername/this-tool.git", branch: "main"
+  head "https://github.com/clausd/this-cli.git", branch: "main"
 
   depends_on :macos
 
