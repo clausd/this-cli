@@ -75,6 +75,9 @@ class ClipboardMonitor {
         // Create data directory
         try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
         
+        // Clean up old files on startup
+        cleanupOldFiles()
+        
         startMonitoring()
         print("Clipboard monitoring started. Data stored in: \(dataDirectory.path)")
     }
@@ -85,6 +88,11 @@ class ClipboardMonitor {
                 self.changeCount = self.pasteboard.changeCount
                 self.handleClipboardChange()
             }
+        }
+        
+        // Schedule periodic cleanup every 5 minutes
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
+            self.cleanupOldFiles()
         }
     }
     
@@ -196,6 +204,58 @@ class ClipboardMonitor {
             try data.write(to: historyFile)
         } catch {
             print("Error saving history: \(error)")
+        }
+    }
+    
+    private func cleanupOldFiles() {
+        let cutoffTime = Date().addingTimeInterval(-10 * 60) // 10 minutes ago
+        
+        guard let contents = try? FileManager.default.contentsOfDirectory(at: dataDirectory, includingPropertiesForKeys: [.contentModificationDateKey]) else {
+            return
+        }
+        
+        for fileURL in contents {
+            // Skip history.json file
+            if fileURL.lastPathComponent == "history.json" {
+                continue
+            }
+            
+            // Check file modification date
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+               let modDate = attributes[.modificationDate] as? Date,
+               modDate < cutoffTime {
+                try? FileManager.default.removeItem(at: fileURL)
+            }
+        }
+        
+        // Also clean up history entries that reference deleted files
+        cleanupHistoryEntries()
+    }
+    
+    private func cleanupHistoryEntries() {
+        let historyFile = dataDirectory.appendingPathComponent("history.json")
+        
+        guard let data = try? Data(contentsOf: historyFile),
+              let history = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else {
+            return
+        }
+        
+        // Filter out entries whose temp files no longer exist
+        let validEntries = history.filter { entry in
+            guard let tempPath = entry.tempFilePath else { return true }
+            return FileManager.default.fileExists(atPath: tempPath)
+        }
+        
+        // Only rewrite if we removed some entries
+        if validEntries.count != history.count {
+            do {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let newData = try encoder.encode(validEntries)
+                try newData.write(to: historyFile)
+            } catch {
+                print("Error updating history after cleanup: \(error)")
+            }
         }
     }
     

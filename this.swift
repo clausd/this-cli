@@ -490,6 +490,11 @@ For detailed documentation: man this
                 while let file = enumerator.nextObject() as? String {
                     let fullPath = "\(expandedDir)/\(file)"
                     
+                    // Skip .this directory to avoid searching our own work folder
+                    if fullPath.contains("/.this/") || fullPath.hasSuffix("/.this") {
+                        continue
+                    }
+                    
                     // Check if file matches our criteria - use stat to get real access time
                     if let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath) {
                         let modDate = attributes[.modificationDate] as? Date ?? Date.distantPast
