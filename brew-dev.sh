@@ -57,6 +57,9 @@ EOF
     # Copy config file
     cp "$current_dir/.this.config" "$tap_dir/"
 
+    # Add the rest of the formula inside the heredoc
+    cat >> "$tap_dir/this.rb" << 'EOF'
+
   def post_install
     # Create user data directory
     (var/"this").mkpath
